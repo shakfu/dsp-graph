@@ -6,16 +6,29 @@ from unittest.mock import patch
 import pytest
 
 from dsp_graph import (
+    SVF,
+    Accum,
+    Allpass,
     AudioInput,
     AudioOutput,
+    Biquad,
     Change,
     Compare,
     Constant,
+    Counter,
+    DCBlock,
     Delta,
     Fold,
     Graph,
+    Latch,
     Mix,
+    OnePole,
+    PulseOsc,
+    SampleHold,
+    SawOsc,
     Select,
+    SinOsc,
+    TriOsc,
     Wrap,
     graph_to_dot,
     graph_to_dot_file,
@@ -177,6 +190,143 @@ class TestGraphToDot:
         dot = graph_to_dot(g)
         assert "change" in dot
         assert "#fde0c8" in dot  # orange (stateful)
+
+    def test_biquad_node(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="bq")],
+            nodes=[Biquad(id="bq", a="in1", b0=1.0, b1=0.0, b2=0.0, a1=0.0, a2=0.0)],
+        )
+        dot = graph_to_dot(g)
+        assert "biquad" in dot
+        assert "#fde0c8" in dot
+
+    def test_svf_node(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="f")],
+            nodes=[SVF(id="f", a="in1", freq=1000.0, q=0.707, mode="lp")],
+        )
+        dot = graph_to_dot(g)
+        assert "svf(lp)" in dot
+        assert "#fde0c8" in dot
+
+    def test_onepole_node(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="op")],
+            nodes=[OnePole(id="op", a="in1", coeff=0.5)],
+        )
+        dot = graph_to_dot(g)
+        assert "onepole" in dot
+        assert "#fde0c8" in dot
+
+    def test_dcblock_node(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="dc")],
+            nodes=[DCBlock(id="dc", a="in1")],
+        )
+        dot = graph_to_dot(g)
+        assert "dcblock" in dot
+        assert "#fde0c8" in dot
+
+    def test_allpass_node(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="ap")],
+            nodes=[Allpass(id="ap", a="in1", coeff=0.5)],
+        )
+        dot = graph_to_dot(g)
+        assert "allpass" in dot
+        assert "#fde0c8" in dot
+
+    def test_sinosc_node(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="s")],
+            nodes=[SinOsc(id="s", freq=440.0)],
+        )
+        dot = graph_to_dot(g)
+        assert "sinosc" in dot
+        assert "#e2d5f1" in dot
+
+    def test_triosc_node(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="t")],
+            nodes=[TriOsc(id="t", freq=440.0)],
+        )
+        dot = graph_to_dot(g)
+        assert "triosc" in dot
+        assert "#e2d5f1" in dot
+
+    def test_sawosc_node(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="s")],
+            nodes=[SawOsc(id="s", freq=440.0)],
+        )
+        dot = graph_to_dot(g)
+        assert "sawosc" in dot
+        assert "#e2d5f1" in dot
+
+    def test_pulseosc_node(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="p")],
+            nodes=[PulseOsc(id="p", freq=440.0, width=0.5)],
+        )
+        dot = graph_to_dot(g)
+        assert "pulseosc" in dot
+        assert "#e2d5f1" in dot
+
+    def test_sample_hold_node(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="sh")],
+            nodes=[SampleHold(id="sh", a="in1", trig=0.0)],
+        )
+        dot = graph_to_dot(g)
+        assert "sample_hold" in dot
+        assert "#fde0c8" in dot
+
+    def test_latch_node(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="la")],
+            nodes=[Latch(id="la", a="in1", trig=0.0)],
+        )
+        dot = graph_to_dot(g)
+        assert "latch" in dot
+        assert "#fde0c8" in dot
+
+    def test_accum_node(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="ac")],
+            nodes=[Accum(id="ac", incr=1.0, reset=0.0)],
+        )
+        dot = graph_to_dot(g)
+        assert "accum" in dot
+        assert "#fde0c8" in dot
+
+    def test_counter_node(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="ct")],
+            nodes=[Counter(id="ct", trig=0.0, max=16.0)],
+        )
+        dot = graph_to_dot(g)
+        assert "counter" in dot
+        assert "#fde0c8" in dot
 
     def test_all_fixtures_valid_dot(
         self,

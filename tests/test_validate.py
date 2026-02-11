@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dsp_graph import (
+    SVF,
     AudioInput,
     AudioOutput,
     BinOp,
@@ -179,6 +180,16 @@ class TestCycleDetection:
                 BinOp(id="sum", op="add", a="in1", b="fb"),
                 DelayWrite(id="dw", delay="dl", value="sum"),
             ],
+        )
+        assert validate_graph(g) == []
+
+    def test_svf_mode_not_flagged_as_ref(self) -> None:
+        """SVF 'mode' field should not be treated as a dangling reference."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="f")],
+            nodes=[SVF(id="f", a="in1", freq=1000.0, q=0.707, mode="lp")],
         )
         assert validate_graph(g) == []
 

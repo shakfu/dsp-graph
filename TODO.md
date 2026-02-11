@@ -1,20 +1,12 @@
 # TODO
 
-## New Node Types
+## Planned Node Types
 
 ### Math / Logic
 
 | Node | `op` | Fields | Purpose |
 |------|------|--------|---------|
-| `BinOp` | `min`, `max` | `a`, `b` | Extend existing BinOp with min/max |
-| `BinOp` | `mod`, `pow` | `a`, `b` | Extend existing BinOp with modulo and power |
-| `UnaryOp` | `floor`, `ceil`, `round` | `a` | Rounding / truncation |
-| `UnaryOp` | `sign` | `a` | Sign function (-1, 0, 1) |
 | `UnaryOp` | `atan`, `asin`, `acos` | `a` | Inverse trig |
-| `Compare` | `gt`, `lt`, `gte`, `lte`, `eq` | `a`, `b` | Returns 1.0 or 0.0 |
-| `Select` | `select` | `cond`, `a`, `b` | `cond > 0 ? a : b` -- conditional routing |
-| `Wrap` | `wrap` | `a`, `lo`, `hi` | Modular wrap (like phasor but general) |
-| `Fold` | `fold` | `a`, `lo`, `hi` | Fold/reflect at boundaries (waveshaping) |
 
 ### State / Timing
 
@@ -25,8 +17,6 @@
 | `Counter` | `counter` | `trig`, `max` | Integer counter, wraps at max |
 | `Latch` | `latch` | `a`, `trig` | Like sample_hold but only latches on rising edge |
 | `RateDiv` | `rate_div` | `a`, `divisor` | Output every N-th sample, hold between |
-| `Change` | `change` | `a` | Outputs 1.0 on sample where `a` changes, else 0.0 |
-| `Delta` | `delta` | `a` | Outputs `a[n] - a[n-1]` (first difference) |
 
 ### Oscillators / Sources
 
@@ -60,7 +50,6 @@
 
 | Node | `op` | Fields | Purpose |
 |------|------|--------|---------|
-| `Mix` | `mix` | `a`, `b`, `t` | Linear interpolation: `a*(1-t) + b*t` |
 | `Scale` | `scale` | `a`, `in_lo`, `in_hi`, `out_lo`, `out_hi` | Linear range mapping |
 | `SmoothParam` | `smooth_param` | `a`, `coeff` | One-pole smoothing for parameter changes |
 | `Peek` | `peek` | `a` | Debug: pass-through that can be read externally |
@@ -88,6 +77,7 @@
 - [ ] `Allpass` node
 - [ ] Oscillator primitives: `SinOsc`, `TriOsc`, `SawOsc`, `PulseOsc`
 - [ ] `SampleHold`, `Latch`, `Accum`, `Counter` state nodes
+- [ ] Extend `UnaryOp` with `atan`, `asin`, `acos` (inverse trig)
 
 ### v0.4 -- Buffers and Tables
 
@@ -103,10 +93,8 @@
 - [ ] Shared param introspection (gen-dsp parser reads dsp-graph param API)
 - [ ] Integration tests: dsp-graph -> gen-dsp -> ChucK/CLAP/AU build
 
-### v0.6 -- Compiler Optimizations
+### v0.6 -- Advanced Compiler Optimizations
 
-- [ ] Constant folding (evaluate pure subgraphs at compile time)
-- [ ] Dead code elimination (prune nodes not reachable from any output)
 - [ ] Common subexpression elimination
 - [ ] Loop-invariant code motion (hoist param-only expressions out of sample loop)
 - [ ] SIMD vectorization hints (mark inner loop as vectorizable)
@@ -115,7 +103,6 @@
 
 - [ ] Subgraph / macro nodes (inline a Graph as a node in another Graph)
 - [ ] Multi-rate processing (control-rate vs audio-rate distinction)
-- [ ] Graph visualization (DOT/Graphviz export)
 - [ ] CLI tool: `dsp-graph compile graph.json -o build/`
 - [ ] Python DSP simulator (interpret graph in Python for prototyping)
 - [ ] WebAssembly codegen target

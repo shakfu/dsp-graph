@@ -7,11 +7,17 @@ from pathlib import Path
 from typing import Callable
 
 from dsp_graph.models import (
+    SVF,
+    Accum,
+    Allpass,
     BinOp,
+    Biquad,
     Change,
     Clamp,
     Compare,
     Constant,
+    Counter,
+    DCBlock,
     DelayLine,
     DelayRead,
     DelayWrite,
@@ -19,12 +25,19 @@ from dsp_graph.models import (
     Fold,
     Graph,
     History,
+    Latch,
     Mix,
     Node,
     Noise,
+    OnePole,
     Param,
     Phasor,
+    PulseOsc,
+    SampleHold,
+    SawOsc,
     Select,
+    SinOsc,
+    TriOsc,
     UnaryOp,
     Wrap,
 )
@@ -60,6 +73,9 @@ _UNARYOP_FUNCS: dict[str, str] = {
     "floor": "floorf",
     "ceil": "ceilf",
     "round": "roundf",
+    "atan": "atanf",
+    "asin": "asinf",
+    "acos": "acosf",
 }
 
 _COMPARE_SYMBOLS: dict[str, str] = {
@@ -225,6 +241,30 @@ def _emit_state_fields(node: Node, w: _Writer) -> None:
         w(f"    uint32_t m_{node.id}_seed;")
     elif isinstance(node, (Delta, Change)):
         w(f"    float m_{node.id}_prev;")
+    elif isinstance(node, Biquad):
+        w(f"    float m_{node.id}_s1;")
+        w(f"    float m_{node.id}_s2;")
+    elif isinstance(node, SVF):
+        w(f"    float m_{node.id}_s1;")
+        w(f"    float m_{node.id}_s2;")
+    elif isinstance(node, OnePole):
+        w(f"    float m_{node.id}_prev;")
+    elif isinstance(node, DCBlock):
+        w(f"    float m_{node.id}_xprev;")
+        w(f"    float m_{node.id}_yprev;")
+    elif isinstance(node, Allpass):
+        w(f"    float m_{node.id}_xprev;")
+        w(f"    float m_{node.id}_yprev;")
+    elif isinstance(node, (SinOsc, TriOsc, SawOsc, PulseOsc)):
+        w(f"    float m_{node.id}_phase;")
+    elif isinstance(node, (SampleHold, Latch)):
+        w(f"    float m_{node.id}_held;")
+        w(f"    float m_{node.id}_ptrig;")
+    elif isinstance(node, Accum):
+        w(f"    float m_{node.id}_sum;")
+    elif isinstance(node, Counter):
+        w(f"    int m_{node.id}_count;")
+        w(f"    float m_{node.id}_ptrig;")
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +283,23 @@ def _emit_state_init(node: Node, w: _Writer) -> None:
         w(f"    self->m_{node.id}_seed = 123456789u;")
     elif isinstance(node, (Delta, Change)):
         w(f"    self->m_{node.id}_prev = 0.0f;")
+    elif isinstance(node, Biquad):
+        w(f"    self->m_{node.id}_s1 = 0.0f;")
+        w(f"    self->m_{node.id}_s2 = 0.0f;")
+    elif isinstance(node, SVF):
+        w(f"    self->m_{node.id}_s1 = 0.0f;")
+        w(f"    self->m_{node.id}_s2 = 0.0f;")
+    elif isinstance(node, OnePole):
+        w(f"    self->m_{node.id}_prev = 0.0f;")
+    elif isinstance(node, DCBlock):
+        w(f"    self->m_{node.id}_xprev = 0.0f;")
+        w(f"    self->m_{node.id}_yprev = 0.0f;")
+    elif isinstance(node, Allpass):
+        w(f"    self->m_{node.id}_xprev = 0.0f;")
+        w(f"    self->m_{node.id}_yprev = 0.0f;")
+    elif isinstance(node, (SampleHold, Latch)):
+        w(f"    self->m_{node.id}_held = 0.0f;")
+        w(f"    self->m_{node.id}_ptrig = 0.0f;")
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +372,30 @@ def _emit_state_load(node: Node, w: _Writer) -> None:
         w(f"    uint32_t {node.id}_seed = self->m_{node.id}_seed;")
     elif isinstance(node, (Delta, Change)):
         w(f"    float {node.id}_prev = self->m_{node.id}_prev;")
+    elif isinstance(node, Biquad):
+        w(f"    float {node.id}_s1 = self->m_{node.id}_s1;")
+        w(f"    float {node.id}_s2 = self->m_{node.id}_s2;")
+    elif isinstance(node, SVF):
+        w(f"    float {node.id}_s1 = self->m_{node.id}_s1;")
+        w(f"    float {node.id}_s2 = self->m_{node.id}_s2;")
+    elif isinstance(node, OnePole):
+        w(f"    float {node.id}_prev = self->m_{node.id}_prev;")
+    elif isinstance(node, DCBlock):
+        w(f"    float {node.id}_xprev = self->m_{node.id}_xprev;")
+        w(f"    float {node.id}_yprev = self->m_{node.id}_yprev;")
+    elif isinstance(node, Allpass):
+        w(f"    float {node.id}_xprev = self->m_{node.id}_xprev;")
+        w(f"    float {node.id}_yprev = self->m_{node.id}_yprev;")
+    elif isinstance(node, (SinOsc, TriOsc, SawOsc, PulseOsc)):
+        w(f"    float {node.id}_phase = self->m_{node.id}_phase;")
+    elif isinstance(node, (SampleHold, Latch)):
+        w(f"    float {node.id}_held = self->m_{node.id}_held;")
+        w(f"    float {node.id}_ptrig = self->m_{node.id}_ptrig;")
+    elif isinstance(node, Accum):
+        w(f"    float {node.id}_sum = self->m_{node.id}_sum;")
+    elif isinstance(node, Counter):
+        w(f"    int {node.id}_count = self->m_{node.id}_count;")
+        w(f"    float {node.id}_ptrig = self->m_{node.id}_ptrig;")
 
 
 def _emit_state_save(node: Node, w: _Writer) -> None:
@@ -328,6 +409,30 @@ def _emit_state_save(node: Node, w: _Writer) -> None:
         w(f"    self->m_{node.id}_seed = {node.id}_seed;")
     elif isinstance(node, (Delta, Change)):
         w(f"    self->m_{node.id}_prev = {node.id}_prev;")
+    elif isinstance(node, Biquad):
+        w(f"    self->m_{node.id}_s1 = {node.id}_s1;")
+        w(f"    self->m_{node.id}_s2 = {node.id}_s2;")
+    elif isinstance(node, SVF):
+        w(f"    self->m_{node.id}_s1 = {node.id}_s1;")
+        w(f"    self->m_{node.id}_s2 = {node.id}_s2;")
+    elif isinstance(node, OnePole):
+        w(f"    self->m_{node.id}_prev = {node.id}_prev;")
+    elif isinstance(node, DCBlock):
+        w(f"    self->m_{node.id}_xprev = {node.id}_xprev;")
+        w(f"    self->m_{node.id}_yprev = {node.id}_yprev;")
+    elif isinstance(node, Allpass):
+        w(f"    self->m_{node.id}_xprev = {node.id}_xprev;")
+        w(f"    self->m_{node.id}_yprev = {node.id}_yprev;")
+    elif isinstance(node, (SinOsc, TriOsc, SawOsc, PulseOsc)):
+        w(f"    self->m_{node.id}_phase = {node.id}_phase;")
+    elif isinstance(node, (SampleHold, Latch)):
+        w(f"    self->m_{node.id}_held = {node.id}_held;")
+        w(f"    self->m_{node.id}_ptrig = {node.id}_ptrig;")
+    elif isinstance(node, Accum):
+        w(f"    self->m_{node.id}_sum = {node.id}_sum;")
+    elif isinstance(node, Counter):
+        w(f"    self->m_{node.id}_count = {node.id}_count;")
+        w(f"    self->m_{node.id}_ptrig = {node.id}_ptrig;")
 
 
 def _emit_node_compute(
@@ -448,6 +553,139 @@ def _emit_node_compute(
         w(f"        float {nid}_cur = {a};")
         w(f"        float {nid} = ({nid}_cur != {nid}_prev) ? 1.0f : 0.0f;")
         w(f"        {nid}_prev = {nid}_cur;")
+
+    elif isinstance(node, Biquad):
+        nid = node.id
+        a = ref(node.a)
+        b0 = ref(node.b0)
+        b1 = ref(node.b1)
+        b2 = ref(node.b2)
+        a1 = ref(node.a1)
+        a2 = ref(node.a2)
+        w(f"        float {nid}_in = {a};")
+        w(f"        float {nid} = {b0} * {nid}_in + {nid}_s1;")
+        w(f"        {nid}_s1 = {b1} * {nid}_in - {a1} * {nid} + {nid}_s2;")
+        w(f"        {nid}_s2 = {b2} * {nid}_in - {a2} * {nid};")
+
+    elif isinstance(node, SVF):
+        nid = node.id
+        a = ref(node.a)
+        freq = ref(node.freq)
+        q = ref(node.q)
+        w(f"        float {nid}_g = tanf(3.14159265f * {freq} / sr);")
+        w(f"        float {nid}_k = 1.0f / {q};")
+        w(f"        float {nid}_a1 = 1.0f / (1.0f + {nid}_g * ({nid}_g + {nid}_k));")
+        w(f"        float {nid}_a2 = {nid}_g * {nid}_a1;")
+        w(f"        float {nid}_a3 = {nid}_g * {nid}_a2;")
+        w(f"        float {nid}_v3 = {a} - {nid}_s2;")
+        w(f"        float {nid}_v1 = {nid}_a1 * {nid}_s1 + {nid}_a2 * {nid}_v3;")
+        w(f"        float {nid}_v2 = {nid}_s2 + {nid}_a2 * {nid}_s1 + {nid}_a3 * {nid}_v3;")
+        w(f"        {nid}_s1 = 2.0f * {nid}_v1 - {nid}_s1;")
+        w(f"        {nid}_s2 = 2.0f * {nid}_v2 - {nid}_s2;")
+        if node.mode == "lp":
+            w(f"        float {nid} = {nid}_v2;")
+        elif node.mode == "hp":
+            w(f"        float {nid} = {a} - {nid}_k * {nid}_v1 - {nid}_v2;")
+        elif node.mode == "bp":
+            w(f"        float {nid} = {nid}_v1;")
+        elif node.mode == "notch":
+            w(f"        float {nid} = {a} - {nid}_k * {nid}_v1;")
+
+    elif isinstance(node, OnePole):
+        nid = node.id
+        a = ref(node.a)
+        c = ref(node.coeff)
+        w(f"        float {nid} = {c} * {a} + (1.0f - {c}) * {nid}_prev;")
+        w(f"        {nid}_prev = {nid};")
+
+    elif isinstance(node, DCBlock):
+        nid = node.id
+        a = ref(node.a)
+        w(f"        float {nid}_x = {a};")
+        w(f"        float {nid} = {nid}_x - {nid}_xprev + 0.995f * {nid}_yprev;")
+        w(f"        {nid}_xprev = {nid}_x;")
+        w(f"        {nid}_yprev = {nid};")
+
+    elif isinstance(node, Allpass):
+        nid = node.id
+        a = ref(node.a)
+        c = ref(node.coeff)
+        w(f"        float {nid}_x = {a};")
+        w(f"        float {nid} = {c} * ({nid}_x - {nid}_yprev) + {nid}_xprev;")
+        w(f"        {nid}_xprev = {nid}_x;")
+        w(f"        {nid}_yprev = {nid};")
+
+    elif isinstance(node, SinOsc):
+        nid = node.id
+        freq = ref(node.freq)
+        w(f"        float {nid} = sinf(6.28318530f * {nid}_phase);")
+        w(f"        {nid}_phase += {freq} / sr;")
+        w(f"        if ({nid}_phase >= 1.0f) {nid}_phase -= 1.0f;")
+
+    elif isinstance(node, TriOsc):
+        nid = node.id
+        freq = ref(node.freq)
+        w(f"        float {nid} = 4.0f * fabsf({nid}_phase - 0.5f) - 1.0f;")
+        w(f"        {nid}_phase += {freq} / sr;")
+        w(f"        if ({nid}_phase >= 1.0f) {nid}_phase -= 1.0f;")
+
+    elif isinstance(node, SawOsc):
+        nid = node.id
+        freq = ref(node.freq)
+        w(f"        float {nid} = 2.0f * {nid}_phase - 1.0f;")
+        w(f"        {nid}_phase += {freq} / sr;")
+        w(f"        if ({nid}_phase >= 1.0f) {nid}_phase -= 1.0f;")
+
+    elif isinstance(node, PulseOsc):
+        nid = node.id
+        freq = ref(node.freq)
+        width = ref(node.width)
+        w(f"        float {nid} = {nid}_phase < {width} ? 1.0f : -1.0f;")
+        w(f"        {nid}_phase += {freq} / sr;")
+        w(f"        if ({nid}_phase >= 1.0f) {nid}_phase -= 1.0f;")
+
+    elif isinstance(node, SampleHold):
+        nid = node.id
+        a = ref(node.a)
+        t = ref(node.trig)
+        w(f"        float {nid}_t = {t};")
+        w(
+            f"        if (({nid}_ptrig <= 0.0f && {nid}_t > 0.0f) ||"
+            f" ({nid}_ptrig > 0.0f && {nid}_t <= 0.0f))"
+        )
+        w(f"            {nid}_held = {a};")
+        w(f"        {nid}_ptrig = {nid}_t;")
+        w(f"        float {nid} = {nid}_held;")
+
+    elif isinstance(node, Latch):
+        nid = node.id
+        a = ref(node.a)
+        t = ref(node.trig)
+        w(f"        float {nid}_t = {t};")
+        w(f"        if ({nid}_ptrig <= 0.0f && {nid}_t > 0.0f)")
+        w(f"            {nid}_held = {a};")
+        w(f"        {nid}_ptrig = {nid}_t;")
+        w(f"        float {nid} = {nid}_held;")
+
+    elif isinstance(node, Accum):
+        nid = node.id
+        incr = ref(node.incr)
+        reset = ref(node.reset)
+        w(f"        if ({reset} > 0.0f) {nid}_sum = 0.0f;")
+        w(f"        {nid}_sum += {incr};")
+        w(f"        float {nid} = {nid}_sum;")
+
+    elif isinstance(node, Counter):
+        nid = node.id
+        t = ref(node.trig)
+        mx = ref(node.max)
+        w(f"        float {nid}_t = {t};")
+        w(f"        if ({nid}_ptrig <= 0.0f && {nid}_t > 0.0f) {{")
+        w(f"            {nid}_count++;")
+        w(f"            if ({nid}_count >= (int){mx}) {nid}_count = 0;")
+        w("        }")
+        w(f"        {nid}_ptrig = {nid}_t;")
+        w(f"        float {nid} = (float){nid}_count;")
 
 
 # ---------------------------------------------------------------------------

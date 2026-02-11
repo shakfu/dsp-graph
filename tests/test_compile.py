@@ -10,13 +10,19 @@ from pathlib import Path
 import pytest
 
 from dsp_graph import (
+    SVF,
+    Accum,
+    Allpass,
     AudioInput,
     AudioOutput,
     BinOp,
+    Biquad,
     Change,
     Clamp,
     Compare,
     Constant,
+    Counter,
+    DCBlock,
     DelayLine,
     DelayRead,
     DelayWrite,
@@ -24,11 +30,18 @@ from dsp_graph import (
     Fold,
     Graph,
     History,
+    Latch,
     Mix,
     Noise,
+    OnePole,
     Param,
     Phasor,
+    PulseOsc,
+    SampleHold,
+    SawOsc,
     Select,
+    SinOsc,
+    TriOsc,
     UnaryOp,
     Wrap,
     compile_graph,
@@ -373,6 +386,276 @@ class TestDeltaChangeState:
         assert "c_prev = c_cur;" in code
 
 
+class TestInverseTrig:
+    """Verify inverse trig code generation."""
+
+    def test_atan(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            nodes=[UnaryOp(id="r", op="atan", a="in1")],
+        )
+        code = compile_graph(g)
+        assert "float r = atanf(in1[i]);" in code
+
+    def test_asin(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            nodes=[UnaryOp(id="r", op="asin", a="in1")],
+        )
+        code = compile_graph(g)
+        assert "float r = asinf(in1[i]);" in code
+
+    def test_acos(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            nodes=[UnaryOp(id="r", op="acos", a="in1")],
+        )
+        code = compile_graph(g)
+        assert "float r = acosf(in1[i]);" in code
+
+
+class TestFilterNodes:
+    """Verify filter node code generation."""
+
+    def test_biquad_struct_fields(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="bq")],
+            nodes=[Biquad(id="bq", a="in1", b0=1.0, b1=0.0, b2=0.0, a1=0.0, a2=0.0)],
+        )
+        code = compile_graph(g)
+        assert "float m_bq_s1;" in code
+        assert "float m_bq_s2;" in code
+
+    def test_biquad_compute(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="bq")],
+            nodes=[Biquad(id="bq", a="in1", b0=1.0, b1=0.0, b2=0.0, a1=0.0, a2=0.0)],
+        )
+        code = compile_graph(g)
+        assert "float bq_in = in1[i];" in code
+        assert "float bq = 1.0f * bq_in + bq_s1;" in code
+        assert "bq_s1 =" in code
+        assert "bq_s2 =" in code
+
+    def test_svf_lp(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="f")],
+            params=[Param(name="freq", default=1000.0), Param(name="q", default=0.707)],
+            nodes=[SVF(id="f", a="in1", freq="freq", q="q", mode="lp")],
+        )
+        code = compile_graph(g)
+        assert "tanf(" in code
+        assert "float f = f_v2;" in code
+
+    def test_svf_hp(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="f")],
+            nodes=[SVF(id="f", a="in1", freq=1000.0, q=0.707, mode="hp")],
+        )
+        code = compile_graph(g)
+        assert "float f = in1[i] - f_k * f_v1 - f_v2;" in code
+
+    def test_svf_bp(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="f")],
+            nodes=[SVF(id="f", a="in1", freq=1000.0, q=0.707, mode="bp")],
+        )
+        code = compile_graph(g)
+        assert "float f = f_v1;" in code
+
+    def test_svf_notch(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="f")],
+            nodes=[SVF(id="f", a="in1", freq=1000.0, q=0.707, mode="notch")],
+        )
+        code = compile_graph(g)
+        assert "float f = in1[i] - f_k * f_v1;" in code
+
+    def test_onepole_compute(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="op")],
+            nodes=[OnePole(id="op", a="in1", coeff=0.5)],
+        )
+        code = compile_graph(g)
+        assert "float m_op_prev;" in code
+        assert "0.5f * in1[i] + (1.0f - 0.5f) * op_prev" in code
+        assert "op_prev = op;" in code
+
+    def test_dcblock_compute(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="dc")],
+            nodes=[DCBlock(id="dc", a="in1")],
+        )
+        code = compile_graph(g)
+        assert "float m_dc_xprev;" in code
+        assert "float m_dc_yprev;" in code
+        assert "0.995f" in code
+        assert "dc_xprev = dc_x;" in code
+        assert "dc_yprev = dc;" in code
+
+    def test_allpass_compute(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="ap")],
+            nodes=[Allpass(id="ap", a="in1", coeff=0.5)],
+        )
+        code = compile_graph(g)
+        assert "float m_ap_xprev;" in code
+        assert "float m_ap_yprev;" in code
+        assert "ap_xprev = ap_x;" in code
+        assert "ap_yprev = ap;" in code
+
+
+class TestOscillatorNodes:
+    """Verify oscillator node code generation."""
+
+    def test_sinosc_compute(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="s")],
+            nodes=[SinOsc(id="s", freq=440.0)],
+        )
+        code = compile_graph(g)
+        assert "sinf(6.28318530f * s_phase)" in code
+        assert "s_phase +=" in code
+        assert "m_s_phase" in code
+
+    def test_triosc_compute(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="t")],
+            nodes=[TriOsc(id="t", freq=440.0)],
+        )
+        code = compile_graph(g)
+        assert "4.0f * fabsf(t_phase - 0.5f) - 1.0f" in code
+        assert "t_phase +=" in code
+
+    def test_sawosc_compute(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="s")],
+            nodes=[SawOsc(id="s", freq=440.0)],
+        )
+        code = compile_graph(g)
+        assert "2.0f * s_phase - 1.0f" in code
+        assert "s_phase +=" in code
+
+    def test_pulseosc_compute(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="p")],
+            nodes=[PulseOsc(id="p", freq=440.0, width=0.5)],
+        )
+        code = compile_graph(g)
+        assert "p_phase < 0.5f ? 1.0f : -1.0f" in code
+        assert "p_phase +=" in code
+
+    def test_oscillator_phase_state(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="s")],
+            nodes=[SinOsc(id="s", freq=440.0)],
+        )
+        code = compile_graph(g)
+        assert "float m_s_phase;" in code
+        assert "float s_phase = self->m_s_phase;" in code
+        assert "self->m_s_phase = s_phase;" in code
+
+
+class TestStateTimingNodes:
+    """Verify state/timing node code generation."""
+
+    def test_sample_hold_struct(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="sh")],
+            nodes=[SampleHold(id="sh", a="in1", trig=0.0)],
+        )
+        code = compile_graph(g)
+        assert "float m_sh_held;" in code
+        assert "float m_sh_ptrig;" in code
+
+    def test_sample_hold_compute(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="sh")],
+            nodes=[SampleHold(id="sh", a="in1", trig=0.0)],
+        )
+        code = compile_graph(g)
+        assert "sh_held = in1[i];" in code
+        assert "float sh = sh_held;" in code
+
+    def test_latch_compute(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="la")],
+            nodes=[Latch(id="la", a="in1", trig=0.0)],
+        )
+        code = compile_graph(g)
+        assert "la_ptrig <= 0.0f && la_t > 0.0f" in code
+        assert "la_held = in1[i];" in code
+        assert "float la = la_held;" in code
+
+    def test_accum_compute(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="ac")],
+            nodes=[Accum(id="ac", incr=1.0, reset=0.0)],
+        )
+        code = compile_graph(g)
+        assert "float m_ac_sum;" in code
+        assert "ac_sum += 1.0f;" in code
+        assert "float ac = ac_sum;" in code
+
+    def test_counter_int_state(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="ct")],
+            nodes=[Counter(id="ct", trig=0.0, max=16.0)],
+        )
+        code = compile_graph(g)
+        assert "int m_ct_count;" in code
+        assert "ct_count++;" in code
+        assert "(int)16.0f" in code
+        assert "float ct = (float)ct_count;" in code
+
+    def test_counter_ptrig(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="ct")],
+            nodes=[Counter(id="ct", trig=0.0, max=16.0)],
+        )
+        code = compile_graph(g)
+        assert "float m_ct_ptrig;" in code
+        assert "ct_ptrig <= 0.0f && ct_t > 0.0f" in code
+
+
 class TestInterpolatedDelayRead:
     """Verify interpolated delay read code generation."""
 
@@ -601,6 +884,9 @@ class TestGccCompilation:
                 UnaryOp(id="cl", op="ceil", a="in1"),
                 UnaryOp(id="rn", op="round", a="in1"),
                 UnaryOp(id="sg", op="sign", a="in1"),
+                UnaryOp(id="at", op="atan", a="in1"),
+                UnaryOp(id="asi", op="asin", a="in1"),
+                UnaryOp(id="aco", op="acos", a="in1"),
                 History(id="prev", input="clamped"),
                 BinOp(id="mixed", op="add", a="shaped", b="prev"),
                 Clamp(id="clamped", a="mixed"),
@@ -618,6 +904,19 @@ class TestGccCompilation:
                 Mix(id="mxn", a="in1", b="half", t=0.5),
                 Delta(id="dt", a="in1"),
                 Change(id="ch", a="in1"),
+                Biquad(id="bq", a="in1", b0=1.0, b1=0.0, b2=0.0, a1=0.0, a2=0.0),
+                SVF(id="svf", a="in1", freq="freq", q=0.707, mode="lp"),
+                OnePole(id="opn", a="in1", coeff=0.5),
+                DCBlock(id="dc", a="in1"),
+                Allpass(id="ap", a="in1", coeff=0.5),
+                SinOsc(id="sosc", freq="freq"),
+                TriOsc(id="tosc", freq="freq"),
+                SawOsc(id="swosc", freq="freq"),
+                PulseOsc(id="posc", freq="freq", width=0.5),
+                SampleHold(id="sh", a="in1", trig=0.0),
+                Latch(id="la", a="in1", trig=0.0),
+                Accum(id="ac", incr=1.0, reset=0.0),
+                Counter(id="ct", trig=0.0, max=16.0),
             ],
         )
         self._compile_check(g)

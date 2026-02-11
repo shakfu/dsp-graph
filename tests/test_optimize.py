@@ -5,13 +5,19 @@ from __future__ import annotations
 import pytest
 
 from dsp_graph import (
+    SVF,
+    Accum,
+    Allpass,
     AudioInput,
     AudioOutput,
     BinOp,
+    Biquad,
     Change,
     Clamp,
     Compare,
     Constant,
+    Counter,
+    DCBlock,
     DelayLine,
     DelayRead,
     DelayWrite,
@@ -19,11 +25,18 @@ from dsp_graph import (
     Fold,
     Graph,
     History,
+    Latch,
     Mix,
     Noise,
+    OnePole,
     Param,
     Phasor,
+    PulseOsc,
+    SampleHold,
+    SawOsc,
     Select,
+    SinOsc,
+    TriOsc,
     UnaryOp,
     Wrap,
     constant_fold,
@@ -216,6 +229,60 @@ class TestConstantFold:
         r = {n.id: n for n in folded.nodes}["r"]
         assert isinstance(r, Constant)
         assert r.value == pytest.approx(0.3)
+
+    def test_v03_stateful_never_folded(self) -> None:
+        """All v0.3 stateful nodes are never constant-folded."""
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="bq")],
+            nodes=[
+                Biquad(id="bq", a=0.0, b0=1.0, b1=0.0, b2=0.0, a1=0.0, a2=0.0),
+                SVF(id="svf", a=0.0, freq=1000.0, q=0.707, mode="lp"),
+                OnePole(id="op", a=0.0, coeff=0.5),
+                DCBlock(id="dc", a=0.0),
+                Allpass(id="ap", a=0.0, coeff=0.5),
+                SinOsc(id="so", freq=440.0),
+                TriOsc(id="to", freq=440.0),
+                SawOsc(id="sw", freq=440.0),
+                PulseOsc(id="po", freq=440.0, width=0.5),
+                SampleHold(id="sh", a=0.0, trig=0.0),
+                Latch(id="la", a=0.0, trig=0.0),
+                Accum(id="ac", incr=1.0, reset=0.0),
+                Counter(id="ct", trig=0.0, max=16.0),
+            ],
+        )
+        folded = constant_fold(g)
+        types = {n.id: type(n).__name__ for n in folded.nodes}
+        assert types["bq"] == "Biquad"
+        assert types["svf"] == "SVF"
+        assert types["op"] == "OnePole"
+        assert types["dc"] == "DCBlock"
+        assert types["ap"] == "Allpass"
+        assert types["so"] == "SinOsc"
+        assert types["to"] == "TriOsc"
+        assert types["sw"] == "SawOsc"
+        assert types["po"] == "PulseOsc"
+        assert types["sh"] == "SampleHold"
+        assert types["la"] == "Latch"
+        assert types["ac"] == "Accum"
+        assert types["ct"] == "Counter"
+
+    def test_inverse_trig_folded(self) -> None:
+        """atan(1.0) -> Constant(pi/4)"""
+        import math
+
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="r")],
+            nodes=[
+                Constant(id="one", value=1.0),
+                UnaryOp(id="r", op="atan", a="one"),
+            ],
+        )
+        folded = constant_fold(g)
+        r = {n.id: n for n in folded.nodes}["r"]
+        assert isinstance(r, Constant)
+        assert r.value == pytest.approx(math.pi / 4)
 
     def test_literal_ref_folded(self) -> None:
         """BinOp with literal float refs folds: 2.0 + 3.0 -> 5.0"""

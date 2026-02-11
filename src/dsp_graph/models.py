@@ -56,6 +56,9 @@ class UnaryOp(BaseModel):
         "ceil",
         "round",
         "sign",
+        "atan",
+        "asin",
+        "acos",
     ]
     a: Ref
 
@@ -164,6 +167,114 @@ class Change(BaseModel):
     a: Ref
 
 
+# ---------------------------------------------------------------------------
+# Filters
+# ---------------------------------------------------------------------------
+
+
+class Biquad(BaseModel):
+    id: str
+    op: Literal["biquad"] = "biquad"
+    a: Ref
+    b0: Ref
+    b1: Ref
+    b2: Ref
+    a1: Ref
+    a2: Ref
+
+
+class SVF(BaseModel):
+    id: str
+    op: Literal["svf"] = "svf"
+    a: Ref
+    freq: Ref
+    q: Ref
+    mode: Literal["lp", "hp", "bp", "notch"]
+
+
+class OnePole(BaseModel):
+    id: str
+    op: Literal["onepole"] = "onepole"
+    a: Ref
+    coeff: Ref
+
+
+class DCBlock(BaseModel):
+    id: str
+    op: Literal["dcblock"] = "dcblock"
+    a: Ref
+
+
+class Allpass(BaseModel):
+    id: str
+    op: Literal["allpass"] = "allpass"
+    a: Ref
+    coeff: Ref
+
+
+# ---------------------------------------------------------------------------
+# Oscillators
+# ---------------------------------------------------------------------------
+
+
+class SinOsc(BaseModel):
+    id: str
+    op: Literal["sinosc"] = "sinosc"
+    freq: Ref
+
+
+class TriOsc(BaseModel):
+    id: str
+    op: Literal["triosc"] = "triosc"
+    freq: Ref
+
+
+class SawOsc(BaseModel):
+    id: str
+    op: Literal["sawosc"] = "sawosc"
+    freq: Ref
+
+
+class PulseOsc(BaseModel):
+    id: str
+    op: Literal["pulseosc"] = "pulseosc"
+    freq: Ref
+    width: Ref
+
+
+# ---------------------------------------------------------------------------
+# State / Timing
+# ---------------------------------------------------------------------------
+
+
+class SampleHold(BaseModel):
+    id: str
+    op: Literal["sample_hold"] = "sample_hold"
+    a: Ref
+    trig: Ref
+
+
+class Latch(BaseModel):
+    id: str
+    op: Literal["latch"] = "latch"
+    a: Ref
+    trig: Ref
+
+
+class Accum(BaseModel):
+    id: str
+    op: Literal["accum"] = "accum"
+    incr: Ref
+    reset: Ref
+
+
+class Counter(BaseModel):
+    id: str
+    op: Literal["counter"] = "counter"
+    trig: Ref
+    max: Ref
+
+
 # Discriminated union of all node types
 Node = Annotated[
     Union[
@@ -184,6 +295,19 @@ Node = Annotated[
         Mix,
         Delta,
         Change,
+        Biquad,
+        SVF,
+        OnePole,
+        DCBlock,
+        Allpass,
+        SinOsc,
+        TriOsc,
+        SawOsc,
+        PulseOsc,
+        SampleHold,
+        Latch,
+        Accum,
+        Counter,
     ],
     Field(discriminator="op"),
 ]

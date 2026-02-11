@@ -8,11 +8,17 @@ from pathlib import Path
 
 from dsp_graph._deps import is_feedback_edge
 from dsp_graph.models import (
+    SVF,
+    Accum,
+    Allpass,
     BinOp,
+    Biquad,
     Change,
     Clamp,
     Compare,
     Constant,
+    Counter,
+    DCBlock,
     DelayLine,
     DelayRead,
     DelayWrite,
@@ -20,10 +26,17 @@ from dsp_graph.models import (
     Fold,
     Graph,
     History,
+    Latch,
     Mix,
     Noise,
+    OnePole,
     Phasor,
+    PulseOsc,
+    SampleHold,
+    SawOsc,
     Select,
+    SinOsc,
+    TriOsc,
     UnaryOp,
     Wrap,
 )
@@ -65,6 +78,32 @@ def _node_attrs(node: object) -> tuple[str, str, str]:
         return "box", "#fde0c8", f"{node.id}\\ndelta"
     if isinstance(node, Change):
         return "box", "#fde0c8", f"{node.id}\\nchange"
+    if isinstance(node, Biquad):
+        return "box", "#fde0c8", f"{node.id}\\nbiquad"
+    if isinstance(node, SVF):
+        return "box", "#fde0c8", f"{node.id}\\nsvf({node.mode})"
+    if isinstance(node, OnePole):
+        return "box", "#fde0c8", f"{node.id}\\nonepole"
+    if isinstance(node, DCBlock):
+        return "box", "#fde0c8", f"{node.id}\\ndcblock"
+    if isinstance(node, Allpass):
+        return "box", "#fde0c8", f"{node.id}\\nallpass"
+    if isinstance(node, SinOsc):
+        return "box", "#e2d5f1", f"{node.id}\\nsinosc"
+    if isinstance(node, TriOsc):
+        return "box", "#e2d5f1", f"{node.id}\\ntriosc"
+    if isinstance(node, SawOsc):
+        return "box", "#e2d5f1", f"{node.id}\\nsawosc"
+    if isinstance(node, PulseOsc):
+        return "box", "#e2d5f1", f"{node.id}\\npulseosc"
+    if isinstance(node, SampleHold):
+        return "box", "#fde0c8", f"{node.id}\\nsample_hold"
+    if isinstance(node, Latch):
+        return "box", "#fde0c8", f"{node.id}\\nlatch"
+    if isinstance(node, Accum):
+        return "box", "#fde0c8", f"{node.id}\\naccum"
+    if isinstance(node, Counter):
+        return "box", "#fde0c8", f"{node.id}\\ncounter"
     return "box", "#ffffff", str(getattr(node, "id", "?"))
 
 

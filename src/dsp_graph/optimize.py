@@ -6,11 +6,17 @@ import math
 from typing import Union
 
 from dsp_graph.models import (
+    SVF,
+    Accum,
+    Allpass,
     BinOp,
+    Biquad,
     Change,
     Clamp,
     Compare,
     Constant,
+    Counter,
+    DCBlock,
     DelayLine,
     DelayRead,
     DelayWrite,
@@ -18,17 +24,46 @@ from dsp_graph.models import (
     Fold,
     Graph,
     History,
+    Latch,
     Mix,
     Node,
     Noise,
+    OnePole,
     Phasor,
+    PulseOsc,
+    SampleHold,
+    SawOsc,
     Select,
+    SinOsc,
+    TriOsc,
     UnaryOp,
     Wrap,
 )
 
 # Types that are stateful and must never be constant-folded.
-_STATEFUL_TYPES = (History, DelayLine, DelayRead, DelayWrite, Phasor, Noise, Delta, Change)
+_STATEFUL_TYPES = (
+    History,
+    DelayLine,
+    DelayRead,
+    DelayWrite,
+    Phasor,
+    Noise,
+    Delta,
+    Change,
+    Biquad,
+    SVF,
+    OnePole,
+    DCBlock,
+    Allpass,
+    SinOsc,
+    TriOsc,
+    SawOsc,
+    PulseOsc,
+    SampleHold,
+    Latch,
+    Accum,
+    Counter,
+)
 
 
 def _resolve_ref(ref: Union[str, float], constants: dict[str, float]) -> float | None:
@@ -62,6 +97,9 @@ _UNARYOP_EVAL: dict[str, object] = {
     "ceil": math.ceil,
     "round": round,
     "sign": lambda x: 1.0 if x > 0 else (-1.0 if x < 0 else 0.0),
+    "atan": math.atan,
+    "asin": lambda x: math.asin(x) if -1 <= x <= 1 else 0.0,
+    "acos": lambda x: math.acos(x) if -1 <= x <= 1 else 0.0,
 }
 
 _COMPARE_EVAL: dict[str, object] = {

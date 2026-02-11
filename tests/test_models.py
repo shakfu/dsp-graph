@@ -6,13 +6,19 @@ import pytest
 from pydantic import ValidationError
 
 from dsp_graph import (
+    SVF,
+    Accum,
+    Allpass,
     AudioInput,
     AudioOutput,
     BinOp,
+    Biquad,
     Change,
     Clamp,
     Compare,
     Constant,
+    Counter,
+    DCBlock,
     DelayLine,
     DelayRead,
     DelayWrite,
@@ -20,11 +26,18 @@ from dsp_graph import (
     Fold,
     Graph,
     History,
+    Latch,
     Mix,
     Noise,
+    OnePole,
     Param,
     Phasor,
+    PulseOsc,
+    SampleHold,
+    SawOsc,
     Select,
+    SinOsc,
+    TriOsc,
     UnaryOp,
     Wrap,
 )
@@ -175,6 +188,75 @@ class TestNodeConstruction:
         assert n.op == "change"
         assert n.a == "in1"
 
+    def test_unaryop_atan(self) -> None:
+        n = UnaryOp(id="x", op="atan", a="in1")
+        assert n.op == "atan"
+
+    def test_unaryop_asin(self) -> None:
+        n = UnaryOp(id="x", op="asin", a="in1")
+        assert n.op == "asin"
+
+    def test_unaryop_acos(self) -> None:
+        n = UnaryOp(id="x", op="acos", a="in1")
+        assert n.op == "acos"
+
+    def test_biquad(self) -> None:
+        n = Biquad(id="bq", a="in1", b0=1.0, b1=0.0, b2=0.0, a1=0.0, a2=0.0)
+        assert n.op == "biquad"
+        assert n.b0 == 1.0
+
+    def test_svf(self) -> None:
+        n = SVF(id="f", a="in1", freq=1000.0, q=0.707, mode="lp")
+        assert n.op == "svf"
+        assert n.mode == "lp"
+
+    def test_onepole_node(self) -> None:
+        n = OnePole(id="op", a="in1", coeff=0.5)
+        assert n.op == "onepole"
+        assert n.coeff == 0.5
+
+    def test_dcblock(self) -> None:
+        n = DCBlock(id="dc", a="in1")
+        assert n.op == "dcblock"
+
+    def test_allpass(self) -> None:
+        n = Allpass(id="ap", a="in1", coeff=0.5)
+        assert n.op == "allpass"
+
+    def test_sinosc(self) -> None:
+        n = SinOsc(id="s", freq=440.0)
+        assert n.op == "sinosc"
+
+    def test_triosc(self) -> None:
+        n = TriOsc(id="t", freq=440.0)
+        assert n.op == "triosc"
+
+    def test_sawosc(self) -> None:
+        n = SawOsc(id="s", freq=440.0)
+        assert n.op == "sawosc"
+
+    def test_pulseosc(self) -> None:
+        n = PulseOsc(id="p", freq=440.0, width=0.5)
+        assert n.op == "pulseosc"
+        assert n.width == 0.5
+
+    def test_sample_hold(self) -> None:
+        n = SampleHold(id="sh", a="in1", trig="t")
+        assert n.op == "sample_hold"
+
+    def test_latch(self) -> None:
+        n = Latch(id="l", a="in1", trig="t")
+        assert n.op == "latch"
+
+    def test_accum(self) -> None:
+        n = Accum(id="ac", incr=1.0, reset=0.0)
+        assert n.op == "accum"
+
+    def test_counter(self) -> None:
+        n = Counter(id="ct", trig="t", max=16.0)
+        assert n.op == "counter"
+        assert n.max == 16.0
+
 
 # ---------------------------------------------------------------------------
 # Param defaults
@@ -246,6 +328,31 @@ class TestJsonRoundTrip:
         restored = Graph.model_validate_json(json_str)
         assert restored == g
 
+    def test_v03_nodes_json_roundtrip(self) -> None:
+        g = Graph(
+            name="v03_types",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="ac")],
+            nodes=[
+                Biquad(id="bq", a="in1", b0=1.0, b1=0.0, b2=0.0, a1=0.0, a2=0.0),
+                SVF(id="svf", a="in1", freq=1000.0, q=0.707, mode="lp"),
+                OnePole(id="op", a="in1", coeff=0.5),
+                DCBlock(id="dc", a="in1"),
+                Allpass(id="ap", a="in1", coeff=0.5),
+                SinOsc(id="so", freq=440.0),
+                TriOsc(id="to", freq=440.0),
+                SawOsc(id="sw", freq=440.0),
+                PulseOsc(id="po", freq=440.0, width=0.5),
+                SampleHold(id="sh", a="in1", trig=0.0),
+                Latch(id="la", a="in1", trig=0.0),
+                Accum(id="ac", incr=1.0, reset=0.0),
+                Counter(id="ct", trig=0.0, max=16.0),
+            ],
+        )
+        json_str = g.model_dump_json()
+        restored = Graph.model_validate_json(json_str)
+        assert restored == g
+
     def test_delay_read_interp_roundtrip(self) -> None:
         g = Graph(
             name="interp_test",
@@ -310,6 +417,49 @@ class TestDiscriminatedUnion:
         assert isinstance(g.nodes[5], Delta)
         assert isinstance(g.nodes[6], Change)
 
+    def test_v03_ops_from_json(self) -> None:
+        raw = {
+            "name": "test",
+            "nodes": [
+                {
+                    "id": "bq",
+                    "op": "biquad",
+                    "a": 0.0,
+                    "b0": 1.0,
+                    "b1": 0.0,
+                    "b2": 0.0,
+                    "a1": 0.0,
+                    "a2": 0.0,
+                },
+                {"id": "svf", "op": "svf", "a": 0.0, "freq": 1000.0, "q": 0.707, "mode": "lp"},
+                {"id": "op", "op": "onepole", "a": 0.0, "coeff": 0.5},
+                {"id": "dc", "op": "dcblock", "a": 0.0},
+                {"id": "ap", "op": "allpass", "a": 0.0, "coeff": 0.5},
+                {"id": "so", "op": "sinosc", "freq": 440.0},
+                {"id": "to", "op": "triosc", "freq": 440.0},
+                {"id": "sw", "op": "sawosc", "freq": 440.0},
+                {"id": "po", "op": "pulseosc", "freq": 440.0, "width": 0.5},
+                {"id": "sh", "op": "sample_hold", "a": 0.0, "trig": 0.0},
+                {"id": "la", "op": "latch", "a": 0.0, "trig": 0.0},
+                {"id": "ac", "op": "accum", "incr": 1.0, "reset": 0.0},
+                {"id": "ct", "op": "counter", "trig": 0.0, "max": 16.0},
+            ],
+        }
+        g = Graph.model_validate(raw)
+        assert isinstance(g.nodes[0], Biquad)
+        assert isinstance(g.nodes[1], SVF)
+        assert isinstance(g.nodes[2], OnePole)
+        assert isinstance(g.nodes[3], DCBlock)
+        assert isinstance(g.nodes[4], Allpass)
+        assert isinstance(g.nodes[5], SinOsc)
+        assert isinstance(g.nodes[6], TriOsc)
+        assert isinstance(g.nodes[7], SawOsc)
+        assert isinstance(g.nodes[8], PulseOsc)
+        assert isinstance(g.nodes[9], SampleHold)
+        assert isinstance(g.nodes[10], Latch)
+        assert isinstance(g.nodes[11], Accum)
+        assert isinstance(g.nodes[12], Counter)
+
     def test_invalid_op_rejected(self) -> None:
         raw = {
             "name": "test",
@@ -356,8 +506,21 @@ class TestGraphStructure:
                 Mix(id="mx", a="in1", b=0.0, t=0.5),
                 Delta(id="dt", a="in1"),
                 Change(id="ch", a="in1"),
+                Biquad(id="bq", a="in1", b0=1.0, b1=0.0, b2=0.0, a1=0.0, a2=0.0),
+                SVF(id="svf", a="in1", freq=1000.0, q=0.707, mode="lp"),
+                OnePole(id="op", a="in1", coeff=0.5),
+                DCBlock(id="dc", a="in1"),
+                Allpass(id="ap", a="in1", coeff=0.5),
+                SinOsc(id="so", freq=440.0),
+                TriOsc(id="to", freq=440.0),
+                SawOsc(id="sw", freq=440.0),
+                PulseOsc(id="po", freq=440.0, width=0.5),
+                SampleHold(id="sh", a="in1", trig=0.0),
+                Latch(id="la", a="in1", trig=0.0),
+                Accum(id="ac", incr=1.0, reset=0.0),
+                Counter(id="ct", trig=0.0, max=16.0),
             ],
         )
         json_str = g.model_dump_json()
         restored = Graph.model_validate_json(json_str)
-        assert len(restored.nodes) == 17
+        assert len(restored.nodes) == 30

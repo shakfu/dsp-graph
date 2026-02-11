@@ -47,7 +47,7 @@ def validate_graph(graph: Graph) -> list[str]:
     all_ids = set(node_ids) | all_sources
 
     # String fields that are enum selectors, not node references
-    _NON_REF_FIELDS = {"id", "op", "interp"}
+    _NON_REF_FIELDS = {"id", "op", "interp", "mode"}
 
     # 2. Reference resolution -- every str input resolves to a known ID
     for node in graph.nodes:
