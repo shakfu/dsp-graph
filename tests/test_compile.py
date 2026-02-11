@@ -39,12 +39,16 @@ from dsp_graph import (
     Noise,
     OnePole,
     Param,
+    Peek,
     Phasor,
     PulseOsc,
+    RateDiv,
     SampleHold,
     SawOsc,
+    Scale,
     Select,
     SinOsc,
+    SmoothParam,
     TriOsc,
     UnaryOp,
     Wrap,
@@ -1018,6 +1022,191 @@ class TestBufferAPI:
         assert "int test_num_buffers(void) { return 0; }" in code
 
 
+class TestRateDiv:
+    """Verify RateDiv node code generation."""
+
+    def test_struct_fields(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="rd")],
+            nodes=[RateDiv(id="rd", a="in1", divisor=4.0)],
+        )
+        code = compile_graph(g)
+        assert "int m_rd_count;" in code
+        assert "float m_rd_held;" in code
+
+    def test_init(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="rd")],
+            nodes=[RateDiv(id="rd", a="in1", divisor=4.0)],
+        )
+        code = compile_graph(g)
+        assert "self->m_rd_count = 0;" in code
+        assert "self->m_rd_held = 0.0f;" in code
+
+    def test_load_save(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="rd")],
+            nodes=[RateDiv(id="rd", a="in1", divisor=4.0)],
+        )
+        code = compile_graph(g)
+        assert "int rd_count = self->m_rd_count;" in code
+        assert "float rd_held = self->m_rd_held;" in code
+        assert "self->m_rd_count = rd_count;" in code
+        assert "self->m_rd_held = rd_held;" in code
+
+    def test_compute(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="rd")],
+            nodes=[RateDiv(id="rd", a="in1", divisor=4.0)],
+        )
+        code = compile_graph(g)
+        assert "if (rd_count == 0) rd_held = in1[i];" in code
+        assert "rd_count++;" in code
+        assert "if (rd_count >= (int)4.0f) rd_count = 0;" in code
+        assert "float rd = rd_held;" in code
+
+
+class TestScale:
+    """Verify Scale node code generation."""
+
+    def test_compute(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="sc")],
+            nodes=[Scale(id="sc", a="in1", in_lo=-1.0, in_hi=1.0, out_lo=0.0, out_hi=10.0)],
+        )
+        code = compile_graph(g)
+        assert "sc_in_range" in code
+        assert "sc_out_range" in code
+        assert "float sc =" in code
+
+    def test_hoisted_when_param_only(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            params=[Param(name="val", default=0.5)],
+            nodes=[
+                Scale(id="sc", a="val", in_lo=0.0, in_hi=1.0, out_lo=0.0, out_hi=10.0),
+                BinOp(id="r", op="mul", a="in1", b="sc"),
+            ],
+        )
+        code = compile_graph(g)
+        loop_pos = code.index("for (int i")
+        sc_pos = code.index("float sc =")
+        assert sc_pos < loop_pos, "param-only Scale should be hoisted"
+
+
+class TestSmoothParam:
+    """Verify SmoothParam node code generation."""
+
+    def test_struct_field(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="sp")],
+            nodes=[SmoothParam(id="sp", a="in1", coeff=0.99)],
+        )
+        code = compile_graph(g)
+        assert "float m_sp_prev;" in code
+
+    def test_compute(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="sp")],
+            nodes=[SmoothParam(id="sp", a="in1", coeff=0.99)],
+        )
+        code = compile_graph(g)
+        assert "(1.0f - 0.99f) * in1[i] + 0.99f * sp_prev" in code
+        assert "sp_prev = sp;" in code
+
+    def test_never_hoisted(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="sp")],
+            params=[Param(name="val", default=0.5)],
+            nodes=[SmoothParam(id="sp", a="val", coeff=0.99)],
+        )
+        code = compile_graph(g)
+        loop_pos = code.index("for (int i")
+        sp_pos = code.index("float sp =")
+        assert sp_pos > loop_pos, "stateful SmoothParam should stay in loop"
+
+
+class TestPeek:
+    """Verify Peek node code generation."""
+
+    def test_struct_field(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="pk")],
+            nodes=[Peek(id="pk", a="in1")],
+        )
+        code = compile_graph(g)
+        assert "float m_pk_value;" in code
+
+    def test_passthrough(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="pk")],
+            nodes=[Peek(id="pk", a="in1")],
+        )
+        code = compile_graph(g)
+        assert "float pk = in1[i];" in code
+        assert "pk_value = pk;" in code
+
+    def test_api_num_peeks(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="pk")],
+            nodes=[Peek(id="pk", a="in1")],
+        )
+        code = compile_graph(g)
+        assert "int test_num_peeks(void) { return 1; }" in code
+
+    def test_api_peek_name(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="pk")],
+            nodes=[Peek(id="pk", a="in1")],
+        )
+        code = compile_graph(g)
+        assert 'return "pk";' in code
+
+    def test_api_get_peek(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="pk")],
+            nodes=[Peek(id="pk", a="in1")],
+        )
+        code = compile_graph(g)
+        assert "return self->m_pk_value;" in code
+
+    def test_no_peeks_api(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="c")],
+            nodes=[Constant(id="c", value=1.0)],
+        )
+        code = compile_graph(g)
+        assert "int test_num_peeks(void) { return 0; }" in code
+
+
 @pytest.mark.skipif(not shutil.which("g++"), reason="g++ not available")
 class TestGccCompilation:
     """Integration: verify generated C++ compiles with g++."""
@@ -1102,6 +1291,10 @@ class TestGccCompilation:
                 BufRead(id="brc", buffer="buf", index="half", interp="cubic"),
                 BufWrite(id="bwr", buffer="buf", index="half", value="in1"),
                 BufSize(id="bsz", buffer="buf"),
+                RateDiv(id="ratediv", a="in1", divisor=4.0),
+                Scale(id="scl", a="in1", in_lo=-1.0, in_hi=1.0, out_lo=0.0, out_hi=10.0),
+                SmoothParam(id="smp", a="in1", coeff=0.99),
+                Peek(id="peek_n", a="in1"),
             ],
         )
         self._compile_check(g)

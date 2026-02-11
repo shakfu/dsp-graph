@@ -28,6 +28,13 @@ def _collect_refs(node: object) -> list[str]:
 
 def validate_graph(graph: Graph) -> list[str]:
     """Validate a DSP graph and return a list of error strings (empty = valid)."""
+    from dsp_graph.subgraph import expand_subgraphs
+
+    try:
+        graph = expand_subgraphs(graph)
+    except ValueError as e:
+        return [str(e)]
+
     errors: list[str] = []
 
     # Build ID sets
@@ -51,7 +58,7 @@ def validate_graph(graph: Graph) -> list[str]:
     all_ids = set(node_ids) | all_sources
 
     # String fields that are enum selectors, not node references
-    _NON_REF_FIELDS = {"id", "op", "interp", "mode"}
+    _NON_REF_FIELDS = {"id", "op", "interp", "mode", "output"}
 
     # 2. Reference resolution -- every str input resolves to a known ID
     for node in graph.nodes:

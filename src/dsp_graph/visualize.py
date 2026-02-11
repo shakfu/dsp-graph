@@ -34,12 +34,17 @@ from dsp_graph.models import (
     Mix,
     Noise,
     OnePole,
+    Peek,
     Phasor,
     PulseOsc,
+    RateDiv,
     SampleHold,
     SawOsc,
+    Scale,
     Select,
     SinOsc,
+    SmoothParam,
+    Subgraph,
     TriOsc,
     UnaryOp,
     Wrap,
@@ -116,6 +121,18 @@ def _node_attrs(node: object) -> tuple[str, str, str]:
         return "box", "#fde0c8", f"{node.id}\\nbuf_write"
     if isinstance(node, BufSize):
         return "box", "#fde0c8", f"{node.id}\\nbuf_size"
+    if isinstance(node, RateDiv):
+        return "box", "#fde0c8", f"{node.id}\\nrate_div"
+    if isinstance(node, Scale):
+        return "box", "#fff3cd", f"{node.id}\\nscale"
+    if isinstance(node, SmoothParam):
+        return "box", "#fde0c8", f"{node.id}\\nsmooth"
+    if isinstance(node, Peek):
+        return "box", "#d4edda", f"{node.id}\\npeek"
+    if isinstance(node, Subgraph):
+        n_in = len(node.graph.inputs)
+        n_out = len(node.graph.outputs)
+        return "box3d", "#cce5ff", f"{node.id}\\nsubgraph ({n_in}in/{n_out}out)"
     return "box", "#ffffff", str(getattr(node, "id", "?"))
 
 
@@ -170,6 +187,11 @@ def graph_to_dot(graph: Graph) -> str:
     for node in graph.nodes:
         for field_name, value in node.__dict__.items():
             if field_name in ("id", "op"):
+                continue
+            if isinstance(value, dict):
+                for v in value.values():
+                    if isinstance(v, str) and v in all_ids:
+                        w(f'    "{v}" -> "{node.id}";')
                 continue
             if not isinstance(value, str) or value not in all_ids:
                 continue

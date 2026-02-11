@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.1.6]
+
+### Added
+
+- Python DSP simulator (`dsp_graph.simulate`): per-sample graph execution in Python for prototyping, unit-testing, and correctness verification without C++ compilation.
+  - `SimState`: holds all mutable state, supports `reset()`, `set_param()`, `get_param()`, `set_buffer()`, `get_buffer()`, `get_peek()`.
+  - `simulate()`: runs a per-sample loop over topo-sorted nodes, returns `SimResult` with output arrays and reusable state.
+  - Covers all 38 node types with behavior matching the C++ codegen exactly.
+  - Delay and buffer reads support none/linear/cubic interpolation.
+  - Deferred History write-backs match C++ perform semantics.
+  - Subgraph auto-expansion supported.
+- Optional `numpy>=1.24` dependency via `pip install dsp-graph[sim]`.
+- 69 new tests covering simulator API, all node types, filters, oscillators, delay/buffer, integration, and edge cases.
+
+- `RateDiv` node: output every N-th sample, hold value between (stateful).
+- `Scale` node: linear range mapping `in_lo..in_hi` -> `out_lo..out_hi` (pure, foldable, CSE-able).
+- `SmoothParam` node: one-pole smoothing for parameter changes (stateful).
+- `Peek` node: debug pass-through with external read API (stateful).
+- Peek introspection API: `num_peeks`, `peek_name`, `get_peek` functions in generated C++.
+- `dsp-graph` CLI tool with three subcommands:
+  - `dsp-graph compile graph.json [-o DIR] [--optimize] [--gen-dsp PLATFORM]`
+  - `dsp-graph validate graph.json`
+  - `dsp-graph dot graph.json [-o DIR]`
+- Total node types: 38 (up from 34).
+
 ## [0.1.5]
 
 ### Added

@@ -34,12 +34,16 @@ from dsp_graph import (
     Noise,
     OnePole,
     Param,
+    Peek,
     Phasor,
     PulseOsc,
+    RateDiv,
     SampleHold,
     SawOsc,
+    Scale,
     Select,
     SinOsc,
+    SmoothParam,
     TriOsc,
     UnaryOp,
     Wrap,
@@ -849,3 +853,105 @@ class TestCSE:
         ids = {n.id for n in result.nodes}
         # One of a/b should be eliminated
         assert len(ids) == 1
+
+    def test_scale_cse(self) -> None:
+        """Identical Scale nodes are merged."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[
+                AudioOutput(id="out1", source="s1"),
+                AudioOutput(id="out2", source="s2"),
+            ],
+            nodes=[
+                Scale(id="s1", a="in1", in_lo=0.0, in_hi=1.0, out_lo=0.0, out_hi=10.0),
+                Scale(id="s2", a="in1", in_lo=0.0, in_hi=1.0, out_lo=0.0, out_hi=10.0),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert len(ids) == 1
+
+
+# ---------------------------------------------------------------------------
+# Scale constant folding
+# ---------------------------------------------------------------------------
+
+
+class TestScaleFold:
+    def test_scale_folded(self) -> None:
+        """scale(0.5, 0, 1, 0, 10) -> 5.0"""
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="r")],
+            nodes=[
+                Scale(id="r", a=0.5, in_lo=0.0, in_hi=1.0, out_lo=0.0, out_hi=10.0),
+            ],
+        )
+        folded = constant_fold(g)
+        r = {n.id: n for n in folded.nodes}["r"]
+        assert isinstance(r, Constant)
+        assert r.value == pytest.approx(5.0)
+
+    def test_scale_degenerate_range(self) -> None:
+        """scale with in_lo == in_hi -> out_lo"""
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="r")],
+            nodes=[
+                Scale(id="r", a=0.5, in_lo=1.0, in_hi=1.0, out_lo=5.0, out_hi=10.0),
+            ],
+        )
+        folded = constant_fold(g)
+        r = {n.id: n for n in folded.nodes}["r"]
+        assert isinstance(r, Constant)
+        assert r.value == pytest.approx(5.0)
+
+    def test_scale_non_constant_preserved(self) -> None:
+        """Scale with non-constant input is not folded."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            nodes=[Scale(id="r", a="in1")],
+        )
+        folded = constant_fold(g)
+        r = {n.id: n for n in folded.nodes}["r"]
+        assert isinstance(r, Scale)
+
+
+# ---------------------------------------------------------------------------
+# New stateful types never folded
+# ---------------------------------------------------------------------------
+
+
+class TestNewStatefulNeverFolded:
+    def test_rate_div_never_folded(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="rd")],
+            nodes=[RateDiv(id="rd", a=0.0, divisor=4.0)],
+        )
+        folded = constant_fold(g)
+        r = {n.id: n for n in folded.nodes}["rd"]
+        assert isinstance(r, RateDiv)
+
+    def test_smooth_param_never_folded(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="sp")],
+            nodes=[SmoothParam(id="sp", a=0.0, coeff=0.99)],
+        )
+        folded = constant_fold(g)
+        r = {n.id: n for n in folded.nodes}["sp"]
+        assert isinstance(r, SmoothParam)
+
+    def test_peek_never_folded(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="pk")],
+            nodes=[Peek(id="pk", a=0.0)],
+        )
+        folded = constant_fold(g)
+        r = {n.id: n for n in folded.nodes}["pk"]
+        assert isinstance(r, Peek)

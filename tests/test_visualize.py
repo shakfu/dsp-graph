@@ -27,11 +27,15 @@ from dsp_graph import (
     Latch,
     Mix,
     OnePole,
+    Peek,
     PulseOsc,
+    RateDiv,
     SampleHold,
     SawOsc,
+    Scale,
     Select,
     SinOsc,
+    SmoothParam,
     TriOsc,
     Wrap,
     graph_to_dot,
@@ -396,6 +400,50 @@ class TestGraphToDot:
             dot = graph_to_dot(g)
             assert dot.startswith("digraph")
             assert dot.strip().endswith("}")
+
+    def test_rate_div_node(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="rd")],
+            nodes=[RateDiv(id="rd", a="in1", divisor=4.0)],
+        )
+        dot = graph_to_dot(g)
+        assert "rate_div" in dot
+        assert "#fde0c8" in dot  # orange (stateful)
+
+    def test_scale_node(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="sc")],
+            nodes=[Scale(id="sc", a="in1")],
+        )
+        dot = graph_to_dot(g)
+        assert "scale" in dot
+        assert "#fff3cd" in dot  # yellow (pure)
+
+    def test_smooth_param_node(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="sp")],
+            nodes=[SmoothParam(id="sp", a="in1", coeff=0.99)],
+        )
+        dot = graph_to_dot(g)
+        assert "smooth" in dot
+        assert "#fde0c8" in dot  # orange (stateful)
+
+    def test_peek_node(self) -> None:
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="pk")],
+            nodes=[Peek(id="pk", a="in1")],
+        )
+        dot = graph_to_dot(g)
+        assert "peek" in dot
+        assert "#d4edda" in dot  # green (debug)
 
     def test_empty_graph(self) -> None:
         graph = Graph(name="empty")

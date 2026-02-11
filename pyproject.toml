@@ -1,6 +1,6 @@
 [project]
 name = "dsp-graph"
-version = "0.1.5"
+version = "0.1.6"
 description = "A Python DSL for defining DSP signal graphs with C++ compilation and optimization"
 readme = "README.md"
 license = {text = "MIT"}
@@ -30,15 +30,22 @@ dependencies = [
     "pydantic>=2.0",
 ]
 
+[project.optional-dependencies]
+sim = ["numpy>=1.24"]
+
 [dependency-groups]
 dev = [
     "gen-dsp>=0.1.6",
     "mypy>=1.19.1",
+    "numpy>=1.24",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.15.0",
     "twine>=6.2.0",
 ]
+
+[project.scripts]
+dsp-graph = "dsp_graph.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/shakfu/dsp-graph"

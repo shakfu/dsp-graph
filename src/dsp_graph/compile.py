@@ -35,17 +35,22 @@ from dsp_graph.models import (
     Noise,
     OnePole,
     Param,
+    Peek,
     Phasor,
     PulseOsc,
+    RateDiv,
     SampleHold,
     SawOsc,
+    Scale,
     Select,
     SinOsc,
+    SmoothParam,
     TriOsc,
     UnaryOp,
     Wrap,
 )
 from dsp_graph.optimize import _STATEFUL_TYPES
+from dsp_graph.subgraph import expand_subgraphs
 from dsp_graph.toposort import toposort
 from dsp_graph.validate import validate_graph
 
@@ -121,6 +126,7 @@ def compile_graph(graph: Graph) -> str:
     Raises ValueError if the graph is invalid or contains IDs that are
     not valid C identifiers.
     """
+    graph = expand_subgraphs(graph)
     errors = validate_graph(graph)
     if errors:
         raise ValueError("Invalid graph: " + "; ".join(errors))
@@ -221,6 +227,10 @@ def compile_graph(graph: Graph) -> str:
     buffer_nodes = [n for n in sorted_nodes if isinstance(n, Buffer)]
     _emit_buffer_api(buffer_nodes, name, struct_name, w)
 
+    # -- Peek API
+    peek_nodes = [n for n in sorted_nodes if isinstance(n, Peek)]
+    _emit_peek_api(peek_nodes, name, struct_name, w)
+
     return "\n".join(lines) + "\n"
 
 
@@ -280,6 +290,13 @@ def _emit_state_fields(node: Node, w: _Writer) -> None:
     elif isinstance(node, Counter):
         w(f"    int m_{node.id}_count;")
         w(f"    float m_{node.id}_ptrig;")
+    elif isinstance(node, RateDiv):
+        w(f"    int m_{node.id}_count;")
+        w(f"    float m_{node.id}_held;")
+    elif isinstance(node, SmoothParam):
+        w(f"    float m_{node.id}_prev;")
+    elif isinstance(node, Peek):
+        w(f"    float m_{node.id}_value;")
     elif isinstance(node, Buffer):
         w(f"    float* m_{node.id}_buf;")
         w(f"    int m_{node.id}_len;")
@@ -318,6 +335,13 @@ def _emit_state_init(node: Node, w: _Writer) -> None:
     elif isinstance(node, (SampleHold, Latch)):
         w(f"    self->m_{node.id}_held = 0.0f;")
         w(f"    self->m_{node.id}_ptrig = 0.0f;")
+    elif isinstance(node, RateDiv):
+        w(f"    self->m_{node.id}_count = 0;")
+        w(f"    self->m_{node.id}_held = 0.0f;")
+    elif isinstance(node, SmoothParam):
+        w(f"    self->m_{node.id}_prev = 0.0f;")
+    elif isinstance(node, Peek):
+        w(f"    self->m_{node.id}_value = 0.0f;")
     elif isinstance(node, Buffer):
         w(f"    self->m_{node.id}_len = {node.size};")
         w(f"    self->m_{node.id}_buf = (float*)calloc({node.size}, sizeof(float));")
@@ -373,6 +397,13 @@ def _emit_state_reset(node: Node, w: _Writer) -> None:
     elif isinstance(node, Counter):
         w(f"    self->m_{node.id}_count = 0;")
         w(f"    self->m_{node.id}_ptrig = 0.0f;")
+    elif isinstance(node, RateDiv):
+        w(f"    self->m_{node.id}_count = 0;")
+        w(f"    self->m_{node.id}_held = 0.0f;")
+    elif isinstance(node, SmoothParam):
+        w(f"    self->m_{node.id}_prev = 0.0f;")
+    elif isinstance(node, Peek):
+        w(f"    self->m_{node.id}_value = 0.0f;")
     elif isinstance(node, Buffer):
         w(f"    memset(self->m_{node.id}_buf, 0, self->m_{node.id}_len * sizeof(float));")
 
@@ -549,6 +580,13 @@ def _emit_state_load(node: Node, w: _Writer) -> None:
     elif isinstance(node, Counter):
         w(f"    int {node.id}_count = self->m_{node.id}_count;")
         w(f"    float {node.id}_ptrig = self->m_{node.id}_ptrig;")
+    elif isinstance(node, RateDiv):
+        w(f"    int {node.id}_count = self->m_{node.id}_count;")
+        w(f"    float {node.id}_held = self->m_{node.id}_held;")
+    elif isinstance(node, SmoothParam):
+        w(f"    float {node.id}_prev = self->m_{node.id}_prev;")
+    elif isinstance(node, Peek):
+        w(f"    float {node.id}_value = self->m_{node.id}_value;")
     elif isinstance(node, Buffer):
         w(f"    float* {node.id}_buf = self->m_{node.id}_buf;")
         w(f"    int {node.id}_len = self->m_{node.id}_len;")
@@ -589,6 +627,13 @@ def _emit_state_save(node: Node, w: _Writer) -> None:
     elif isinstance(node, Counter):
         w(f"    self->m_{node.id}_count = {node.id}_count;")
         w(f"    self->m_{node.id}_ptrig = {node.id}_ptrig;")
+    elif isinstance(node, RateDiv):
+        w(f"    self->m_{node.id}_count = {node.id}_count;")
+        w(f"    self->m_{node.id}_held = {node.id}_held;")
+    elif isinstance(node, SmoothParam):
+        w(f"    self->m_{node.id}_prev = {node.id}_prev;")
+    elif isinstance(node, Peek):
+        w(f"    self->m_{node.id}_value = {node.id}_value;")
 
 
 def _emit_node_compute(
@@ -873,6 +918,39 @@ def _emit_node_compute(
     elif isinstance(node, BufSize):
         w(f"        float {node.id} = (float){node.buffer}_len;")
 
+    elif isinstance(node, RateDiv):
+        nid = node.id
+        a = ref(node.a)
+        divisor = ref(node.divisor)
+        w(f"        if ({nid}_count == 0) {nid}_held = {a};")
+        w(f"        {nid}_count++;")
+        w(f"        if ({nid}_count >= (int){divisor}) {nid}_count = 0;")
+        w(f"        float {nid} = {nid}_held;")
+
+    elif isinstance(node, Scale):
+        nid = node.id
+        a = ref(node.a)
+        in_lo = ref(node.in_lo)
+        in_hi = ref(node.in_hi)
+        out_lo = ref(node.out_lo)
+        out_hi = ref(node.out_hi)
+        w(f"        float {nid}_in_range = {in_hi} - {in_lo};")
+        w(f"        float {nid}_out_range = {out_hi} - {out_lo};")
+        w(f"        float {nid} = {out_lo} + ({a} - {in_lo}) / {nid}_in_range * {nid}_out_range;")
+
+    elif isinstance(node, SmoothParam):
+        nid = node.id
+        a = ref(node.a)
+        c = ref(node.coeff)
+        w(f"        float {nid} = (1.0f - {c}) * {a} + {c} * {nid}_prev;")
+        w(f"        {nid}_prev = {nid};")
+
+    elif isinstance(node, Peek):
+        nid = node.id
+        a = ref(node.a)
+        w(f"        float {nid} = {a};")
+        w(f"        {nid}_value = {nid};")
+
 
 # ---------------------------------------------------------------------------
 # Interpolation helpers
@@ -1081,4 +1159,37 @@ def _emit_buffer_api(buffer_nodes: list[Buffer], name: str, struct_name: str, w:
     w("    int copy_len = len < cap ? len : cap;")
     w("    for (int i = 0; i < copy_len; i++) dst[i] = data[i];")
     w("    for (int i = copy_len; i < cap; i++) dst[i] = 0.0f;")
+    w("}")
+
+
+# ---------------------------------------------------------------------------
+# Peek introspection API
+# ---------------------------------------------------------------------------
+
+
+def _emit_peek_api(peek_nodes: list[Peek], name: str, struct_name: str, w: _Writer) -> None:
+    count = len(peek_nodes)
+
+    # num_peeks
+    w("")
+    w(f"int {name}_num_peeks(void) {{ return {count}; }}")
+    w("")
+
+    # peek_name
+    w(f"const char* {name}_peek_name(int index) {{")
+    w("    switch (index) {")
+    for idx, pk in enumerate(peek_nodes):
+        w(f'    case {idx}: return "{pk.id}";')
+    w('    default: return "";')
+    w("    }")
+    w("}")
+    w("")
+
+    # get_peek
+    w(f"float {name}_get_peek({struct_name}* self, int index) {{")
+    w("    switch (index) {")
+    for idx, pk in enumerate(peek_nodes):
+        w(f"    case {idx}: return self->m_{pk.id}_value;")
+    w("    default: return 0.0f;")
+    w("    }")
     w("}")

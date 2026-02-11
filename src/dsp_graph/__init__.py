@@ -1,9 +1,15 @@
 """Define DSP signal graphs as Pydantic models, compile to C++, and optimize.
 
-Provides 34 node types (arithmetic, filters, oscillators, delays, buffers,
-state/timing), graph validation, topological sort, Graphviz visualization,
-and a multi-pass optimizing compiler targeting standalone C++. Optional
-gen-dsp integration generates adapter code for 10+ audio plugin platforms.
+Provides 39 node types (arithmetic, filters, oscillators, delays, buffers,
+state/timing, subgraph, utility), graph validation, topological sort, Graphviz
+visualization, and a multi-pass optimizing compiler targeting standalone C++.
+Optional gen-dsp integration generates adapter code for 10+ audio plugin
+platforms.
+
+A per-sample Python simulator is available via the ``simulate`` module
+(requires numpy -- install with ``pip install dsp-graph[sim]``)::
+
+    from dsp_graph.simulate import simulate, SimState, SimResult
 """
 
 from dsp_graph.compile import compile_graph, compile_graph_to_file
@@ -43,23 +49,29 @@ from dsp_graph.models import (
     Noise,
     OnePole,
     Param,
+    Peek,
     Phasor,
     PulseOsc,
+    RateDiv,
     Ref,
     SampleHold,
     SawOsc,
+    Scale,
     Select,
     SinOsc,
+    SmoothParam,
+    Subgraph,
     TriOsc,
     UnaryOp,
     Wrap,
 )
 from dsp_graph.optimize import constant_fold, eliminate_cse, eliminate_dead_nodes, optimize_graph
+from dsp_graph.subgraph import expand_subgraphs
 from dsp_graph.toposort import toposort
 from dsp_graph.validate import validate_graph
 from dsp_graph.visualize import graph_to_dot, graph_to_dot_file
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 
 __all__ = [
     "Accum",
@@ -91,14 +103,19 @@ __all__ = [
     "Noise",
     "OnePole",
     "Param",
+    "Peek",
     "Phasor",
     "PulseOsc",
+    "RateDiv",
     "Ref",
     "SVF",
     "SampleHold",
     "SawOsc",
+    "Scale",
     "Select",
     "SinOsc",
+    "SmoothParam",
+    "Subgraph",
     "TriOsc",
     "UnaryOp",
     "Wrap",
@@ -106,6 +123,7 @@ __all__ = [
     "compile_graph",
     "compile_graph_to_file",
     "constant_fold",
+    "expand_subgraphs",
     "eliminate_cse",
     "eliminate_dead_nodes",
     "generate_adapter_cpp",

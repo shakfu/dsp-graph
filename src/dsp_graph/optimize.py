@@ -33,12 +33,16 @@ from dsp_graph.models import (
     Node,
     Noise,
     OnePole,
+    Peek,
     Phasor,
     PulseOsc,
+    RateDiv,
     SampleHold,
     SawOsc,
+    Scale,
     Select,
     SinOsc,
+    SmoothParam,
     TriOsc,
     UnaryOp,
     Wrap,
@@ -67,6 +71,9 @@ _STATEFUL_TYPES = (
     Latch,
     Accum,
     Counter,
+    RateDiv,
+    SmoothParam,
+    Peek,
     Buffer,
     BufRead,
     BufWrite,
@@ -200,6 +207,25 @@ def _try_fold(node: Node, constants: dict[str, float]) -> float | None:
             return a + (b - a) * mix_t
         return None
 
+    if isinstance(node, Scale):
+        a = _resolve_ref(node.a, constants)
+        in_lo = _resolve_ref(node.in_lo, constants)
+        in_hi = _resolve_ref(node.in_hi, constants)
+        out_lo = _resolve_ref(node.out_lo, constants)
+        out_hi = _resolve_ref(node.out_hi, constants)
+        if (
+            a is not None
+            and in_lo is not None
+            and in_hi is not None
+            and out_lo is not None
+            and out_hi is not None
+        ):
+            in_range = in_hi - in_lo
+            if in_range == 0.0:
+                return out_lo
+            return out_lo + (a - in_lo) / in_range * (out_hi - out_lo)
+        return None
+
     return None
 
 
@@ -329,6 +355,8 @@ def _cse_key(node: Node, rewrite: dict[str, str]) -> tuple[Union[str, float], ..
         return ("fold", r(node.a), r(node.lo), r(node.hi))
     if isinstance(node, Mix):
         return ("mix", r(node.a), r(node.b), r(node.t))
+    if isinstance(node, Scale):
+        return ("scale", r(node.a), r(node.in_lo), r(node.in_hi), r(node.out_lo), r(node.out_hi))
     return None
 
 
@@ -387,6 +415,9 @@ def eliminate_cse(graph: Graph) -> Graph:
 
 def optimize_graph(graph: Graph) -> Graph:
     """Apply all optimization passes: constant folding, CSE, then dead node elimination."""
+    from dsp_graph.subgraph import expand_subgraphs
+
+    graph = expand_subgraphs(graph)
     result = constant_fold(graph)
     result = eliminate_cse(result)
     result = eliminate_dead_nodes(result)

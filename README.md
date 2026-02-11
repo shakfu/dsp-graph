@@ -1,13 +1,16 @@
 # dsp-graph
 
-A Python DSL for defining DSP signal graphs, compiling them to standalone C++, and optimizing the result.
+A Python DSL for defining DSP signal graphs, compiling them to standalone C++, simulating in Python, and optimizing the result.
 
-Define audio processing graphs using Pydantic models, validate them, compile to C++, and serialize to/from JSON. Zero runtime dependencies beyond Pydantic.
+Define audio processing graphs using Pydantic models, validate them, compile to C++, simulate in Python with numpy, and serialize to/from JSON. Zero runtime dependencies beyond Pydantic (numpy optional for simulation).
 
 ## Install
 
 ```bash
 pip install dsp-graph
+
+# With simulation support (numpy):
+pip install dsp-graph[sim]
 ```
 
 For development:
@@ -47,7 +50,66 @@ code = compile_graph(graph)  # standalone C++ string
 print(graph.model_dump_json(indent=2))
 ```
 
-## Node Types (34)
+## Simulation
+
+Run graphs in Python without C++ compilation. Useful for prototyping, unit-testing DSP algorithms, and verifying correctness. Requires numpy (`pip install dsp-graph[sim]`).
+
+```python
+import numpy as np
+from dsp_graph.simulate import simulate, SimState
+
+# Simulate with audio input
+inp = np.ones(100, dtype=np.float32)
+result = simulate(graph, inputs={"in1": inp}, params={"coeff": 0.3})
+
+# Output arrays keyed by output ID
+output = result.outputs["out1"]  # NDArray[np.float32]
+
+# State persists across calls for streaming
+result2 = simulate(graph, inputs={"in1": inp}, state=result.state)
+
+# Generators (no inputs) require explicit n_samples
+from dsp_graph import Graph, AudioOutput, SinOsc
+gen = Graph(
+    name="tone",
+    outputs=[AudioOutput(id="out1", source="osc")],
+    nodes=[SinOsc(id="osc", freq=440.0)],
+    sample_rate=44100.0,
+)
+result = simulate(gen, n_samples=44100)
+
+# Buffer and peek access via SimState
+state = SimState(graph)
+state.set_param("coeff", 0.7)
+state.set_buffer("wt", np.sin(np.linspace(0, 2*np.pi, 1024)).astype(np.float32))
+result = simulate(graph, inputs={"in1": inp}, state=state)
+print(state.get_peek("monitor"))
+```
+
+The simulator executes a per-sample Python loop that mirrors the C++ codegen exactly: same topo-sorted node order, same deferred History write-backs, same interpolation formulas.
+
+## CLI
+
+The `dsp-graph` command-line tool compiles, validates, and visualizes graph JSON files.
+
+```bash
+# Compile graph to C++ (stdout)
+dsp-graph compile graph.json
+
+# Compile to directory with optimization
+dsp-graph compile graph.json -o build/ --optimize
+
+# Compile with gen-dsp adapter for a specific platform
+dsp-graph compile graph.json --gen-dsp chuck -o build/
+
+# Validate graph JSON
+dsp-graph validate graph.json
+
+# Generate DOT visualization (stdout or directory)
+dsp-graph dot graph.json -o build/
+```
+
+## Node Types (38)
 
 ### Arithmetic / Math
 
@@ -62,6 +124,7 @@ print(graph.model_dump_json(indent=2))
 | `Wrap` | `wrap` | `a`, `lo`, `hi` | Wrap value into range |
 | `Fold` | `fold` | `a`, `lo`, `hi` | Fold (reflect) value into range |
 | `Mix` | `mix` | `a`, `b`, `t` | Linear interpolation: `a + (b - a) * t` |
+| `Scale` | `scale` | `a`, `in_lo`, `in_hi`, `out_lo`, `out_hi` | Linear range mapping |
 
 ### Delay
 
@@ -112,6 +175,9 @@ print(graph.model_dump_json(indent=2))
 | `Latch` | `latch` | `a`, `trig` | Latch on rising edge only |
 | `Accum` | `accum` | `incr`, `reset` | Running sum, resets when `reset > 0` |
 | `Counter` | `counter` | `trig`, `max` | Integer counter, wraps at max |
+| `RateDiv` | `rate_div` | `a`, `divisor` | Output every N-th sample, hold between |
+| `SmoothParam` | `smooth` | `a`, `coeff` | One-pole smoothing for param changes |
+| `Peek` | `peek` | `a` | Debug pass-through, readable externally |
 
 ## C++ Compilation
 
@@ -122,6 +188,7 @@ print(graph.model_dump_json(indent=2))
 - `perform(self, ins, outs, n)` sample-processing loop
 - Param introspection: `num_params`, `param_name`, `param_min`, `param_max`, `set_param`, `get_param`
 - Buffer introspection: `num_buffers`, `buffer_name`, `buffer_size`, `get_buffer`, `set_buffer`
+- Peek introspection: `num_peeks`, `peek_name`, `get_peek`
 
 ```python
 from dsp_graph import compile_graph, compile_graph_to_file

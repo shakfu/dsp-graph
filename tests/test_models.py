@@ -35,12 +35,17 @@ from dsp_graph import (
     Noise,
     OnePole,
     Param,
+    Peek,
     Phasor,
     PulseOsc,
+    RateDiv,
     SampleHold,
     SawOsc,
+    Scale,
     Select,
     SinOsc,
+    SmoothParam,
+    Subgraph,
     TriOsc,
     UnaryOp,
     Wrap,
@@ -294,6 +299,52 @@ class TestNodeConstruction:
         assert n.op == "buf_size"
         assert n.buffer == "buf"
 
+    def test_rate_div(self) -> None:
+        n = RateDiv(id="rd", a="in1", divisor=4.0)
+        assert n.op == "rate_div"
+        assert n.a == "in1"
+        assert n.divisor == 4.0
+
+    def test_scale(self) -> None:
+        n = Scale(id="sc", a="in1")
+        assert n.op == "scale"
+        assert n.in_lo == 0.0
+        assert n.in_hi == 1.0
+        assert n.out_lo == 0.0
+        assert n.out_hi == 1.0
+
+    def test_scale_custom(self) -> None:
+        n = Scale(id="sc", a="in1", in_lo=-1.0, in_hi=1.0, out_lo=0.0, out_hi=10.0)
+        assert n.in_lo == -1.0
+        assert n.in_hi == 1.0
+        assert n.out_lo == 0.0
+        assert n.out_hi == 10.0
+
+    def test_smooth_param(self) -> None:
+        n = SmoothParam(id="sp", a="in1", coeff=0.99)
+        assert n.op == "smooth"
+        assert n.a == "in1"
+        assert n.coeff == 0.99
+
+    def test_peek(self) -> None:
+        n = Peek(id="pk", a="in1")
+        assert n.op == "peek"
+        assert n.a == "in1"
+
+    def test_subgraph(self) -> None:
+        inner = Graph(
+            name="inner",
+            inputs=[AudioInput(id="x")],
+            outputs=[AudioOutput(id="y", source="pass_node")],
+            nodes=[BinOp(id="pass_node", op="mul", a="x", b=1.0)],
+        )
+        n = Subgraph(id="sg", graph=inner, inputs={"x": "in1"})
+        assert n.op == "subgraph"
+        assert n.graph.name == "inner"
+        assert n.inputs == {"x": "in1"}
+        assert n.params == {}
+        assert n.output == ""
+
 
 # ---------------------------------------------------------------------------
 # Param defaults
@@ -404,6 +455,54 @@ class TestJsonRoundTrip:
         json_str = g.model_dump_json()
         restored = Graph.model_validate_json(json_str)
         assert restored == g
+
+    def test_v06_nodes_json_roundtrip(self) -> None:
+        g = Graph(
+            name="v06_types",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="pk")],
+            nodes=[
+                RateDiv(id="rd", a="in1", divisor=4.0),
+                Scale(id="sc", a="in1", in_lo=-1.0, in_hi=1.0, out_lo=0.0, out_hi=10.0),
+                SmoothParam(id="sp", a="in1", coeff=0.99),
+                Peek(id="pk", a="in1"),
+            ],
+        )
+        json_str = g.model_dump_json()
+        restored = Graph.model_validate_json(json_str)
+        assert restored == g
+
+    def test_subgraph_json_roundtrip(self) -> None:
+        inner = Graph(
+            name="inner",
+            inputs=[AudioInput(id="x")],
+            outputs=[AudioOutput(id="y", source="n")],
+            params=[Param(name="g", default=0.5)],
+            nodes=[BinOp(id="n", op="mul", a="x", b="g")],
+        )
+        g = Graph(
+            name="sg_test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="sg")],
+            nodes=[
+                Subgraph(
+                    id="sg",
+                    graph=inner,
+                    inputs={"x": "in1"},
+                    params={"g": 0.8},
+                    output="y",
+                ),
+            ],
+        )
+        json_str = g.model_dump_json()
+        restored = Graph.model_validate_json(json_str)
+        assert restored == g
+        sg_node = restored.nodes[0]
+        assert isinstance(sg_node, Subgraph)
+        assert sg_node.graph.name == "inner"
+        assert sg_node.inputs == {"x": "in1"}
+        assert sg_node.params == {"g": 0.8}
+        assert sg_node.output == "y"
 
     def test_delay_read_interp_roundtrip(self) -> None:
         g = Graph(
@@ -528,6 +627,22 @@ class TestDiscriminatedUnion:
         assert isinstance(g.nodes[2], BufWrite)
         assert isinstance(g.nodes[3], BufSize)
 
+    def test_v06_ops_from_json(self) -> None:
+        raw = {
+            "name": "test",
+            "nodes": [
+                {"id": "rd", "op": "rate_div", "a": 0.0, "divisor": 4.0},
+                {"id": "sc", "op": "scale", "a": 0.0},
+                {"id": "sp", "op": "smooth", "a": 0.0, "coeff": 0.99},
+                {"id": "pk", "op": "peek", "a": 0.0},
+            ],
+        }
+        g = Graph.model_validate(raw)
+        assert isinstance(g.nodes[0], RateDiv)
+        assert isinstance(g.nodes[1], Scale)
+        assert isinstance(g.nodes[2], SmoothParam)
+        assert isinstance(g.nodes[3], Peek)
+
     def test_invalid_op_rejected(self) -> None:
         raw = {
             "name": "test",
@@ -591,8 +706,22 @@ class TestGraphStructure:
                 BufRead(id="br", buffer="buf", index=0.0),
                 BufWrite(id="bw", buffer="buf", index=0.0, value=0.0),
                 BufSize(id="bs", buffer="buf"),
+                RateDiv(id="rd", a="in1", divisor=4.0),
+                Scale(id="sc", a="in1"),
+                SmoothParam(id="sp", a="in1", coeff=0.99),
+                Peek(id="pk", a="in1"),
+                Subgraph(
+                    id="sg",
+                    graph=Graph(
+                        name="inner",
+                        inputs=[AudioInput(id="x")],
+                        outputs=[AudioOutput(id="y", source="pass")],
+                        nodes=[BinOp(id="pass", op="mul", a="x", b=1.0)],
+                    ),
+                    inputs={"x": "in1"},
+                ),
             ],
         )
         json_str = g.model_dump_json()
         restored = Graph.model_validate_json(json_str)
-        assert len(restored.nodes) == 34
+        assert len(restored.nodes) == 39

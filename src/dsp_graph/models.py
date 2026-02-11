@@ -275,6 +275,55 @@ class Counter(BaseModel):
     max: Ref
 
 
+class RateDiv(BaseModel):
+    id: str
+    op: Literal["rate_div"] = "rate_div"
+    a: Ref
+    divisor: Ref
+
+
+class SmoothParam(BaseModel):
+    id: str
+    op: Literal["smooth"] = "smooth"
+    a: Ref
+    coeff: Ref
+
+
+class Peek(BaseModel):
+    id: str
+    op: Literal["peek"] = "peek"
+    a: Ref
+
+
+# ---------------------------------------------------------------------------
+# Range mapping
+# ---------------------------------------------------------------------------
+
+
+class Scale(BaseModel):
+    id: str
+    op: Literal["scale"] = "scale"
+    a: Ref
+    in_lo: Ref = 0.0
+    in_hi: Ref = 1.0
+    out_lo: Ref = 0.0
+    out_hi: Ref = 1.0
+
+
+# ---------------------------------------------------------------------------
+# Subgraph / Macro
+# ---------------------------------------------------------------------------
+
+
+class Subgraph(BaseModel):
+    id: str
+    op: Literal["subgraph"] = "subgraph"
+    graph: Graph
+    inputs: dict[str, Ref]
+    params: dict[str, Ref] = {}
+    output: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Buffer / Table
 # ---------------------------------------------------------------------------
@@ -341,6 +390,11 @@ Node = Annotated[
         Latch,
         Accum,
         Counter,
+        RateDiv,
+        SmoothParam,
+        Peek,
+        Scale,
+        Subgraph,
         Buffer,
         BufRead,
         BufWrite,
@@ -362,3 +416,7 @@ class Graph(BaseModel):
     outputs: list[AudioOutput] = []
     params: list[Param] = []
     nodes: list[Node] = []
+
+
+# Resolve circular reference: Subgraph.graph -> Graph -> list[Node] -> Subgraph
+Subgraph.model_rebuild()
