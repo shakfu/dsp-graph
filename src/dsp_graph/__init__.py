@@ -51,7 +51,7 @@ from dsp_graph.toposort import toposort
 from dsp_graph.validate import validate_graph
 from dsp_graph.visualize import graph_to_dot, graph_to_dot_file
 
-__version__ = "0.6.0"
+__version__ = "0.1.5"
 
 __all__ = [
     "Accum",

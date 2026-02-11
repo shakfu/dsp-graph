@@ -697,6 +697,139 @@ class TestCSE:
         assert "c2" not in ids
         assert "m2" not in ids
 
+    def test_unaryop_cse(self) -> None:
+        """Identical UnaryOp nodes are merged."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[
+                AudioOutput(id="out1", source="a"),
+                AudioOutput(id="out2", source="b"),
+            ],
+            nodes=[
+                UnaryOp(id="a", op="sin", a="in1"),
+                UnaryOp(id="b", op="sin", a="in1"),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert len(ids) == 1
+
+    def test_compare_cse(self) -> None:
+        """Identical Compare nodes are merged."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[
+                AudioOutput(id="out1", source="a"),
+                AudioOutput(id="out2", source="b"),
+            ],
+            nodes=[
+                Compare(id="a", op="gt", a="in1", b=0.0),
+                Compare(id="b", op="gt", a="in1", b=0.0),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert len(ids) == 1
+
+    def test_select_cse(self) -> None:
+        """Identical Select nodes are merged."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[
+                AudioOutput(id="out1", source="s1"),
+                AudioOutput(id="out2", source="s2"),
+            ],
+            nodes=[
+                Compare(id="cmp", op="gt", a="in1", b=0.0),
+                Select(id="s1", cond="cmp", a="in1", b=0.0),
+                Select(id="s2", cond="cmp", a="in1", b=0.0),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert "s2" not in ids
+
+    def test_wrap_fold_cse(self) -> None:
+        """Identical Wrap and Fold nodes are merged."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[
+                AudioOutput(id="out1", source="w1"),
+                AudioOutput(id="out2", source="w2"),
+                AudioOutput(id="out3", source="f1"),
+                AudioOutput(id="out4", source="f2"),
+            ],
+            nodes=[
+                Wrap(id="w1", a="in1", lo=0.0, hi=1.0),
+                Wrap(id="w2", a="in1", lo=0.0, hi=1.0),
+                Fold(id="f1", a="in1", lo=0.0, hi=1.0),
+                Fold(id="f2", a="in1", lo=0.0, hi=1.0),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert "w2" not in ids
+        assert "f2" not in ids
+
+    def test_different_values_not_merged(self) -> None:
+        """Constants with different values remain separate."""
+        g = Graph(
+            name="test",
+            outputs=[
+                AudioOutput(id="out1", source="a"),
+                AudioOutput(id="out2", source="b"),
+            ],
+            nodes=[
+                Constant(id="a", value=3.14),
+                Constant(id="b", value=2.71),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert ids == {"a", "b"}
+
+    def test_different_ops_not_merged(self) -> None:
+        """BinOps with different ops but same operands remain separate."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[
+                AudioOutput(id="out1", source="a"),
+                AudioOutput(id="out2", source="b"),
+            ],
+            nodes=[
+                BinOp(id="a", op="add", a="in1", b=1.0),
+                BinOp(id="b", op="sub", a="in1", b=1.0),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert ids == {"a", "b"}
+
+    def test_stateful_node_refs_rewritten(self) -> None:
+        """A History node referencing a CSE'd node gets its ref rewritten."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="result")],
+            nodes=[
+                BinOp(id="a1", op="add", a="in1", b=1.0),
+                BinOp(id="a2", op="add", a="in1", b=1.0),
+                History(id="prev", init=0.0, input="a2"),
+                BinOp(id="result", op="add", a="a1", b="prev"),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert "a2" not in ids
+        h = {n.id: n for n in result.nodes}["prev"]
+        assert isinstance(h, History)
+        assert h.input == "a1"
+
     def test_cse_in_optimize_graph(self) -> None:
         """End-to-end: CSE runs as part of optimize_graph()."""
         g = Graph(

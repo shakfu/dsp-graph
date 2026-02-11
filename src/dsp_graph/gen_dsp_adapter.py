@@ -253,7 +253,7 @@ def assemble_project(
 
 def _copy_platform_templates(output_dir: Path, platform: str) -> None:
     """Copy gen-dsp platform template files to the output directory."""
-    import gen_dsp.templates as templates  # type: ignore[import-not-found]
+    import gen_dsp.templates as templates  # type: ignore[import-untyped]
 
     getter = getattr(templates, f"get_{platform}_templates_dir", None)
     if getter is None:

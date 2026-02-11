@@ -1217,21 +1217,84 @@ class TestLICM:
         dry_pos = code.index("float dry =")
         assert dry_pos > loop_pos
 
+    def test_multiline_wrap_hoisted(self) -> None:
+        """A Wrap node (multi-line emission) is correctly hoisted with proper indent."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            params=[Param(name="phase", default=0.5)],
+            nodes=[
+                Wrap(id="w", a="phase", lo=0.0, hi=1.0),
+                BinOp(id="r", op="mul", a="in1", b="w"),
+            ],
+        )
+        code = compile_graph(g)
+        loop_pos = code.index("for (int i")
+        # All lines of Wrap emission should be before the loop
+        assert code.index("w_range") < loop_pos
+        assert code.index("w_raw") < loop_pos
+        assert code.index("float w =") < loop_pos
+        # Hoisted lines should be at 4-space indent (not 8)
+        for line in code.splitlines():
+            if "w_range" in line and "float" in line:
+                assert line.startswith("    ") and not line.startswith("        ")
+
+    def test_multiline_fold_hoisted(self) -> None:
+        """A Fold node (multi-line emission with if statement) is correctly hoisted."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            params=[Param(name="val", default=0.5)],
+            nodes=[
+                Fold(id="f", a="val", lo=0.0, hi=1.0),
+                BinOp(id="r", op="mul", a="in1", b="f"),
+            ],
+        )
+        code = compile_graph(g)
+        loop_pos = code.index("for (int i")
+        assert code.index("f_range") < loop_pos
+        assert code.index("f_t") < loop_pos
+        assert code.index("float f =") < loop_pos
+
+    def test_sr_not_invariant(self) -> None:
+        """Nodes referencing sr (via stateful nodes like SVF) stay in loop."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="f")],
+            nodes=[SVF(id="f", a="in1", freq=1000.0, q=0.707, mode="lp")],
+        )
+        code = compile_graph(g)
+        # SVF uses sr internally and is stateful -- stays in loop
+        loop_pos = code.index("for (int i")
+        f_g_pos = code.index("f_g")
+        assert f_g_pos > loop_pos
+
 
 class TestSIMDHints:
     """Verify SIMD vectorization hints in generated code."""
 
     def test_restrict_on_io_pointers(self) -> None:
-        """I/O pointers use __restrict."""
+        """I/O pointers use __restrict with correct array unpacking."""
         g = Graph(
             name="test",
-            inputs=[AudioInput(id="in1")],
-            outputs=[AudioOutput(id="out1", source="r")],
-            nodes=[BinOp(id="r", op="mul", a="in1", b=1.0)],
+            inputs=[AudioInput(id="in1"), AudioInput(id="in2")],
+            outputs=[
+                AudioOutput(id="out1", source="r1"),
+                AudioOutput(id="out2", source="r2"),
+            ],
+            nodes=[
+                BinOp(id="r1", op="mul", a="in1", b=1.0),
+                BinOp(id="r2", op="mul", a="in2", b=1.0),
+            ],
         )
         code = compile_graph(g)
-        assert "float* __restrict in1" in code
-        assert "float* __restrict out1" in code
+        assert "float* __restrict in1 = ins[0];" in code
+        assert "float* __restrict in2 = ins[1];" in code
+        assert "float* __restrict out1 = outs[0];" in code
+        assert "float* __restrict out2 = outs[1];" in code
 
     def test_vectorize_pragma_pure_graph(self) -> None:
         """Vectorization pragma present when only pure nodes exist."""
