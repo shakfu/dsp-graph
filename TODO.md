@@ -71,13 +71,13 @@
 
 ### v0.3 -- Filters and Oscillators
 
-- [ ] `Biquad` node with coefficient inputs
-- [ ] `SVF` node (state-variable filter: lp/hp/bp/notch)
-- [ ] `OnePole` and `DCBlock` as built-in compound nodes
-- [ ] `Allpass` node
-- [ ] Oscillator primitives: `SinOsc`, `TriOsc`, `SawOsc`, `PulseOsc`
-- [ ] `SampleHold`, `Latch`, `Accum`, `Counter` state nodes
-- [ ] Extend `UnaryOp` with `atan`, `asin`, `acos` (inverse trig)
+- [x] `Biquad` node with coefficient inputs
+- [x] `SVF` node (state-variable filter: lp/hp/bp/notch)
+- [x] `OnePole` and `DCBlock` as built-in compound nodes
+- [x] `Allpass` node
+- [x] Oscillator primitives: `SinOsc`, `TriOsc`, `SawOsc`, `PulseOsc`
+- [x] `SampleHold`, `Latch`, `Accum`, `Counter` state nodes
+- [x] Extend `UnaryOp` with `atan`, `asin`, `acos` (inverse trig)
 
 ### v0.4 -- Buffers and Tables
 
