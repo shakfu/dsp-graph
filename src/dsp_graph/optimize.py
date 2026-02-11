@@ -11,6 +11,10 @@ from dsp_graph.models import (
     Allpass,
     BinOp,
     Biquad,
+    Buffer,
+    BufRead,
+    BufSize,
+    BufWrite,
     Change,
     Clamp,
     Compare,
@@ -63,6 +67,10 @@ _STATEFUL_TYPES = (
     Latch,
     Accum,
     Counter,
+    Buffer,
+    BufRead,
+    BufWrite,
+    BufSize,
 )
 
 
@@ -238,6 +246,12 @@ def eliminate_dead_nodes(graph: Graph) -> Graph:
         if isinstance(node, DelayWrite):
             delay_writers.setdefault(node.delay, []).append(node.id)
 
+    # Map buffer ID -> BufWrite node IDs that write to it
+    buffer_writers: dict[str, list[str]] = {}
+    for node in graph.nodes:
+        if isinstance(node, BufWrite):
+            buffer_writers.setdefault(node.buffer, []).append(node.id)
+
     # Seed with output sources
     reachable: set[str] = set()
     worklist: list[str] = [out.source for out in graph.outputs if out.source in node_ids]
@@ -259,6 +273,10 @@ def eliminate_dead_nodes(graph: Graph) -> Graph:
         # If this is a DelayRead, also mark the corresponding writers
         if isinstance(node, DelayRead):
             for writer_id in delay_writers.get(node.delay, []):
+                worklist.append(writer_id)
+        # If this is a BufRead or BufSize, also mark the corresponding writers
+        if isinstance(node, (BufRead, BufSize)):
+            for writer_id in buffer_writers.get(node.buffer, []):
                 worklist.append(writer_id)
 
     new_nodes = [node for node in graph.nodes if node.id in reachable]

@@ -1,8 +1,8 @@
 # dsp-graph
 
-A Python DSL for defining DSP signal graphs with JSON serialization.
+A Python DSL for defining DSP signal graphs, compiling them to standalone C++, and optimizing the result.
 
-Define audio processing graphs using Pydantic models, validate them, and serialize to/from JSON.
+Define audio processing graphs using Pydantic models, validate them, compile to C++, and serialize to/from JSON. Zero runtime dependencies beyond Pydantic.
 
 ## Install
 
@@ -10,11 +10,12 @@ Define audio processing graphs using Pydantic models, validate them, and seriali
 uv pip install -e .
 ```
 
-## Usage
+## Quick Start
 
 ```python
 from dsp_graph import (
-    AudioInput, AudioOutput, BinOp, Graph, History, Param, validate_graph,
+    AudioInput, AudioOutput, BinOp, Graph, History, Param,
+    compile_graph, validate_graph,
 )
 
 graph = Graph(
@@ -34,23 +35,103 @@ graph = Graph(
 errors = validate_graph(graph)
 assert errors == []
 
+code = compile_graph(graph)  # standalone C++ string
 print(graph.model_dump_json(indent=2))
 ```
 
-## Node Types
+## Node Types (34)
 
-| Node | `op` | Purpose |
-|------|------|---------|
-| `BinOp` | `add`, `sub`, `mul`, `div` | Arithmetic on two inputs |
-| `UnaryOp` | `sin`, `cos`, `tanh`, `exp`, `log`, `abs`, `sqrt`, `neg` | Math function on one input |
-| `Clamp` | `clamp` | Saturate to `[lo, hi]` |
-| `Constant` | `constant` | Literal float value |
-| `History` | `history` | Single-sample delay (z^-1) |
-| `DelayLine` | `delay` | Circular buffer declaration |
-| `DelayRead` | `delay_read` | Read from delay line |
-| `DelayWrite` | `delay_write` | Write to delay line |
-| `Phasor` | `phasor` | Ramp oscillator 0..1 |
-| `Noise` | `noise` | White noise source |
+### Arithmetic / Math
+
+| Node | `op` | Fields | Purpose |
+|------|------|--------|---------|
+| `BinOp` | `add`, `sub`, `mul`, `div`, `min`, `max`, `mod`, `pow` | `a`, `b` | Binary arithmetic |
+| `UnaryOp` | `sin`, `cos`, `tanh`, `exp`, `log`, `abs`, `sqrt`, `neg`, `floor`, `ceil`, `round`, `sign`, `atan`, `asin`, `acos` | `a` | Unary math functions |
+| `Clamp` | `clamp` | `a`, `lo`, `hi` | Saturate to `[lo, hi]` |
+| `Constant` | `constant` | `value` | Literal float value |
+| `Compare` | `gt`, `lt`, `gte`, `lte`, `eq` | `a`, `b` | Comparison (returns 0.0 or 1.0) |
+| `Select` | `select` | `cond`, `a`, `b` | Conditional: `a` if `cond > 0`, else `b` |
+| `Wrap` | `wrap` | `a`, `lo`, `hi` | Wrap value into range |
+| `Fold` | `fold` | `a`, `lo`, `hi` | Fold (reflect) value into range |
+| `Mix` | `mix` | `a`, `b`, `t` | Linear interpolation: `a + (b - a) * t` |
+
+### Delay
+
+| Node | `op` | Fields | Purpose |
+|------|------|--------|---------|
+| `DelayLine` | `delay` | `max_samples` | Circular buffer declaration |
+| `DelayRead` | `delay_read` | `delay`, `tap`, `interp` | Read from delay line (none/linear/cubic) |
+| `DelayWrite` | `delay_write` | `delay`, `value` | Write to delay line |
+| `History` | `history` | `input`, `init` | Single-sample delay (z^-1 feedback) |
+
+### Buffer / Table
+
+| Node | `op` | Fields | Purpose |
+|------|------|--------|---------|
+| `Buffer` | `buffer` | `size` | Random-access data buffer |
+| `BufRead` | `buf_read` | `buffer`, `index`, `interp` | Read from buffer (none/linear/cubic, clamped) |
+| `BufWrite` | `buf_write` | `buffer`, `index`, `value` | Write to buffer at index |
+| `BufSize` | `buf_size` | `buffer` | Returns buffer length as float |
+
+### Filters
+
+| Node | `op` | Fields | Purpose |
+|------|------|--------|---------|
+| `Biquad` | `biquad` | `a`, `b0`, `b1`, `b2`, `a1`, `a2` | Generic biquad (user supplies coefficients) |
+| `SVF` | `svf` | `a`, `freq`, `q`, `mode` | State-variable filter (lp/hp/bp/notch) |
+| `OnePole` | `onepole` | `a`, `coeff` | One-pole lowpass |
+| `DCBlock` | `dcblock` | `a` | DC blocking filter |
+| `Allpass` | `allpass` | `a`, `coeff` | First-order allpass |
+
+### Oscillators / Sources
+
+| Node | `op` | Fields | Purpose |
+|------|------|--------|---------|
+| `Phasor` | `phasor` | `freq` | Ramp oscillator 0..1 |
+| `SinOsc` | `sinosc` | `freq` | Sine oscillator |
+| `TriOsc` | `triosc` | `freq` | Triangle wave |
+| `SawOsc` | `sawosc` | `freq` | Bipolar saw (-1..1) |
+| `PulseOsc` | `pulseosc` | `freq`, `width` | Pulse/square with variable duty cycle |
+| `Noise` | `noise` | -- | White noise source |
+
+### State / Timing
+
+| Node | `op` | Fields | Purpose |
+|------|------|--------|---------|
+| `Delta` | `delta` | `a` | Sample-to-sample difference |
+| `Change` | `change` | `a` | 1.0 if value changed, else 0.0 |
+| `SampleHold` | `sample_hold` | `a`, `trig` | Latch on any zero crossing |
+| `Latch` | `latch` | `a`, `trig` | Latch on rising edge only |
+| `Accum` | `accum` | `incr`, `reset` | Running sum, resets when `reset > 0` |
+| `Counter` | `counter` | `trig`, `max` | Integer counter, wraps at max |
+
+## C++ Compilation
+
+`compile_graph()` generates a single self-contained `.cpp` file with:
+
+- A state struct (`{Name}State`)
+- `create(sr)` / `destroy(self)` lifecycle
+- `perform(self, ins, outs, n)` sample-processing loop
+- Param introspection: `num_params`, `param_name`, `param_min`, `param_max`, `set_param`, `get_param`
+- Buffer introspection: `num_buffers`, `buffer_name`, `buffer_size`, `get_buffer`, `set_buffer`
+
+```python
+from dsp_graph import compile_graph, compile_graph_to_file
+
+code = compile_graph(graph)           # returns C++ string
+path = compile_graph_to_file(graph, "build/")  # writes build/{name}.cpp
+```
+
+## Optimization
+
+```python
+from dsp_graph import optimize_graph, constant_fold, eliminate_dead_nodes
+
+optimized = optimize_graph(graph)  # constant folding + dead node elimination
+```
+
+- **Constant folding**: pure nodes with all-constant inputs are replaced by `Constant` nodes
+- **Dead node elimination**: nodes not reachable from any output are removed (respects side-effecting writers for delay lines and buffers)
 
 ## Validation
 
@@ -60,7 +141,26 @@ print(graph.model_dump_json(indent=2))
 2. All string references resolve to existing IDs
 3. Output sources reference existing nodes
 4. DelayRead/DelayWrite reference existing DelayLine nodes
-5. No pure cycles (cycles must pass through History or delay)
+5. BufRead/BufWrite/BufSize reference existing Buffer nodes
+6. No pure cycles (cycles must pass through History or delay)
+
+## Visualization
+
+```python
+from dsp_graph import graph_to_dot, graph_to_dot_file
+
+dot_str = graph_to_dot(graph)                  # DOT string
+dot_path = graph_to_dot_file(graph, "build/")  # writes .dot, renders .pdf if `dot` is on PATH
+```
+
+## Examples
+
+See `examples/` for complete working graphs:
+
+- `stereo_gain.py` -- stateless stereo gain
+- `onepole.py` -- one-pole lowpass with History feedback
+- `fbdelay.py` -- feedback delay with dry/wet mix
+- `wavetable.py` -- wavetable oscillator using Buffer + Phasor + BufRead
 
 ## Development
 

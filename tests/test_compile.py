@@ -17,6 +17,10 @@ from dsp_graph import (
     AudioOutput,
     BinOp,
     Biquad,
+    Buffer,
+    BufRead,
+    BufSize,
+    BufWrite,
     Change,
     Clamp,
     Compare,
@@ -839,6 +843,181 @@ class TestCompileToFile:
         assert out.parent == tmp_path
 
 
+class TestBufferNodes:
+    """Verify buffer node code generation."""
+
+    def _make_buf_graph(self, *extra_nodes, output_src="br") -> Graph:
+        nodes = [Buffer(id="buf", size=1024)]
+        nodes.extend(extra_nodes)
+        return Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source=output_src)],
+            nodes=nodes,
+        )
+
+    def test_buffer_struct_fields(self) -> None:
+        g = self._make_buf_graph(
+            BufRead(id="br", buffer="buf", index=0.0),
+        )
+        code = compile_graph(g)
+        assert "float* m_buf_buf;" in code
+        assert "int m_buf_len;" in code
+
+    def test_buffer_calloc(self) -> None:
+        g = self._make_buf_graph(
+            BufRead(id="br", buffer="buf", index=0.0),
+        )
+        code = compile_graph(g)
+        assert "calloc(1024, sizeof(float))" in code
+
+    def test_buffer_free(self) -> None:
+        g = self._make_buf_graph(
+            BufRead(id="br", buffer="buf", index=0.0),
+        )
+        code = compile_graph(g)
+        assert "free(self->m_buf_buf);" in code
+
+    def test_bufread_none_interp(self) -> None:
+        g = self._make_buf_graph(
+            BufRead(id="br", buffer="buf", index=0.0),
+        )
+        code = compile_graph(g)
+        assert "int br_idx = (int)(0.0f);" in code
+        assert "if (br_idx < 0) br_idx = 0;" in code
+        assert "if (br_idx >= buf_len) br_idx = buf_len - 1;" in code
+        assert "float br = buf_buf[br_idx];" in code
+
+    def test_bufread_linear_interp(self) -> None:
+        g = self._make_buf_graph(
+            BufRead(id="br", buffer="buf", index=0.0, interp="linear"),
+        )
+        code = compile_graph(g)
+        assert "br_fidx" in code
+        assert "br_frac" in code
+        assert "br_i0" in code
+        assert "br_i1" in code
+        assert "br_s0" in code
+        assert "br_s1" in code
+        # Clamped indices
+        assert "if (br_i0 < 0) br_i0 = 0;" in code
+        assert "if (br_i1 >= buf_len) br_i1 = buf_len - 1;" in code
+
+    def test_bufread_cubic_interp(self) -> None:
+        g = self._make_buf_graph(
+            BufRead(id="br", buffer="buf", index=0.0, interp="cubic"),
+        )
+        code = compile_graph(g)
+        assert "br_fidx" in code
+        assert "br_ym1" in code
+        assert "br_y0" in code
+        assert "br_y1" in code
+        assert "br_y2" in code
+        assert "br_c0" in code
+        assert "br_c1" in code
+        assert "br_c2" in code
+        assert "br_c3" in code
+        assert "br_im1" in code
+        assert "br_i2" in code
+
+    def test_bufwrite_compute(self) -> None:
+        g = self._make_buf_graph(
+            BufRead(id="br", buffer="buf", index=0.0),
+            BufWrite(id="bw", buffer="buf", index=0.0, value=1.0),
+        )
+        code = compile_graph(g)
+        assert "int bw_idx = (int)(0.0f);" in code
+        assert "if (bw_idx >= 0 && bw_idx < buf_len)" in code
+        assert "buf_buf[bw_idx] = 1.0f;" in code
+        # BufWrite is side-effect only -- no output variable
+        assert "float bw " not in code
+        assert "float bw=" not in code
+
+    def test_bufsize_compute(self) -> None:
+        g = self._make_buf_graph(
+            BufSize(id="bs", buffer="buf"),
+            output_src="bs",
+        )
+        code = compile_graph(g)
+        assert "float bs = (float)buf_len;" in code
+
+
+class TestBufferAPI:
+    """Verify buffer introspection API functions."""
+
+    def test_num_buffers(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="buf1", size=1024),
+                Buffer(id="buf2", size=2048),
+                BufRead(id="br", buffer="buf1", index=0.0),
+            ],
+        )
+        code = compile_graph(g)
+        assert "int test_num_buffers(void) { return 2; }" in code
+
+    def test_buffer_name(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="wt", size=1024),
+                BufRead(id="br", buffer="wt", index=0.0),
+            ],
+        )
+        code = compile_graph(g)
+        assert 'return "wt";' in code
+
+    def test_buffer_size(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="wt", size=1024),
+                BufRead(id="br", buffer="wt", index=0.0),
+            ],
+        )
+        code = compile_graph(g)
+        assert "return self->m_wt_len;" in code
+
+    def test_get_buffer(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="wt", size=1024),
+                BufRead(id="br", buffer="wt", index=0.0),
+            ],
+        )
+        code = compile_graph(g)
+        assert "return self->m_wt_buf;" in code
+
+    def test_set_buffer(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="wt", size=1024),
+                BufRead(id="br", buffer="wt", index=0.0),
+            ],
+        )
+        code = compile_graph(g)
+        assert "dst = self->m_wt_buf; cap = self->m_wt_len;" in code
+        assert "int copy_len = len < cap ? len : cap;" in code
+        assert "for (int i = 0; i < copy_len; i++) dst[i] = data[i];" in code
+        assert "for (int i = copy_len; i < cap; i++) dst[i] = 0.0f;" in code
+
+    def test_no_buffers_api(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="c")],
+            nodes=[Constant(id="c", value=1.0)],
+        )
+        code = compile_graph(g)
+        assert "int test_num_buffers(void) { return 0; }" in code
+
+
 @pytest.mark.skipif(not shutil.which("g++"), reason="g++ not available")
 class TestGccCompilation:
     """Integration: verify generated C++ compiles with g++."""
@@ -917,6 +1096,12 @@ class TestGccCompilation:
                 Latch(id="la", a="in1", trig=0.0),
                 Accum(id="ac", incr=1.0, reset=0.0),
                 Counter(id="ct", trig=0.0, max=16.0),
+                Buffer(id="buf", size=1024),
+                BufRead(id="brd", buffer="buf", index="half"),
+                BufRead(id="brl", buffer="buf", index="half", interp="linear"),
+                BufRead(id="brc", buffer="buf", index="half", interp="cubic"),
+                BufWrite(id="bwr", buffer="buf", index="half", value="in1"),
+                BufSize(id="bsz", buffer="buf"),
             ],
         )
         self._compile_check(g)

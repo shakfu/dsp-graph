@@ -12,6 +12,10 @@ from dsp_graph import (
     AudioOutput,
     BinOp,
     Biquad,
+    Buffer,
+    BufRead,
+    BufSize,
+    BufWrite,
     Change,
     Clamp,
     Compare,
@@ -463,6 +467,77 @@ class TestOptimizeGraph:
         g = Graph(name="empty")
         result = optimize_graph(g)
         assert result.nodes == []
+
+    def test_v04_buffer_stateful_never_folded(self) -> None:
+        """All v0.4 buffer-related stateful nodes are never constant-folded."""
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="buf", size=1024),
+                BufRead(id="br", buffer="buf", index=0.0),
+                BufWrite(id="bw", buffer="buf", index=0.0, value=0.0),
+                BufSize(id="bs", buffer="buf"),
+            ],
+        )
+        folded = constant_fold(g)
+        types = {n.id: type(n).__name__ for n in folded.nodes}
+        assert types["buf"] == "Buffer"
+        assert types["br"] == "BufRead"
+        assert types["bw"] == "BufWrite"
+        assert types["bs"] == "BufSize"
+
+    def test_buffer_dead_node_elimination_preserved(self) -> None:
+        """BufWrite kept alive when BufRead on same buffer is reachable."""
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="buf", size=1024),
+                BufRead(id="br", buffer="buf", index=0.0),
+                BufWrite(id="bw", buffer="buf", index=0.0, value=0.0),
+                Constant(id="dead", value=999.0),
+            ],
+        )
+        result = eliminate_dead_nodes(g)
+        ids = {n.id for n in result.nodes}
+        assert "buf" in ids
+        assert "br" in ids
+        assert "bw" in ids
+        assert "dead" not in ids
+
+    def test_buffer_dead_node_elimination_removed(self) -> None:
+        """BufWrite removed when no BufRead/BufSize on same buffer is reachable."""
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="c")],
+            nodes=[
+                Constant(id="c", value=1.0),
+                Buffer(id="buf", size=1024),
+                BufWrite(id="bw", buffer="buf", index=0.0, value=0.0),
+            ],
+        )
+        result = eliminate_dead_nodes(g)
+        ids = {n.id for n in result.nodes}
+        assert "c" in ids
+        assert "bw" not in ids
+        assert "buf" not in ids
+
+    def test_bufsize_keeps_writers_alive(self) -> None:
+        """BufSize also keeps BufWrite alive on the same buffer."""
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="bs")],
+            nodes=[
+                Buffer(id="buf", size=1024),
+                BufSize(id="bs", buffer="buf"),
+                BufWrite(id="bw", buffer="buf", index=0.0, value=0.0),
+            ],
+        )
+        result = eliminate_dead_nodes(g)
+        ids = {n.id for n in result.nodes}
+        assert "bs" in ids
+        assert "bw" in ids
 
     def test_param_preserves_nodes(self) -> None:
         """Nodes depending on params are not folded."""

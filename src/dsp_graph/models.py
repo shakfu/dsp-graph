@@ -275,6 +275,39 @@ class Counter(BaseModel):
     max: Ref
 
 
+# ---------------------------------------------------------------------------
+# Buffer / Table
+# ---------------------------------------------------------------------------
+
+
+class Buffer(BaseModel):
+    id: str
+    op: Literal["buffer"] = "buffer"
+    size: int = 48000
+
+
+class BufRead(BaseModel):
+    id: str
+    op: Literal["buf_read"] = "buf_read"
+    buffer: str  # Buffer node ID
+    index: Ref  # read position (float, will be clamped)
+    interp: Literal["none", "linear", "cubic"] = "none"
+
+
+class BufWrite(BaseModel):
+    id: str
+    op: Literal["buf_write"] = "buf_write"
+    buffer: str  # Buffer node ID
+    index: Ref  # write position
+    value: Ref  # value to write
+
+
+class BufSize(BaseModel):
+    id: str
+    op: Literal["buf_size"] = "buf_size"
+    buffer: str  # Buffer node ID
+
+
 # Discriminated union of all node types
 Node = Annotated[
     Union[
@@ -308,6 +341,10 @@ Node = Annotated[
         Latch,
         Accum,
         Counter,
+        Buffer,
+        BufRead,
+        BufWrite,
+        BufSize,
     ],
     Field(discriminator="op"),
 ]

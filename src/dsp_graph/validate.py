@@ -4,6 +4,10 @@ from collections import defaultdict
 
 from dsp_graph._deps import build_forward_deps
 from dsp_graph.models import (
+    Buffer,
+    BufRead,
+    BufSize,
+    BufWrite,
     DelayLine,
     DelayRead,
     DelayWrite,
@@ -77,6 +81,16 @@ def validate_graph(graph: Graph) -> list[str]:
             errors.append(
                 f"DelayWrite '{node.id}' references non-existent delay line '{node.delay}'"
             )
+
+    # 4b. Buffer consistency -- BufRead/BufWrite/BufSize must reference a Buffer
+    buffer_ids = {node.id for node in graph.nodes if isinstance(node, Buffer)}
+    for node in graph.nodes:
+        if isinstance(node, BufRead) and node.buffer not in buffer_ids:
+            errors.append(f"BufRead '{node.id}' references non-existent buffer '{node.buffer}'")
+        if isinstance(node, BufWrite) and node.buffer not in buffer_ids:
+            errors.append(f"BufWrite '{node.id}' references non-existent buffer '{node.buffer}'")
+        if isinstance(node, BufSize) and node.buffer not in buffer_ids:
+            errors.append(f"BufSize '{node.id}' references non-existent buffer '{node.buffer}'")
 
     # 5. No pure cycles -- topo sort on non-feedback edges must succeed
     deps = build_forward_deps(graph)

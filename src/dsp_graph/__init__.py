@@ -7,6 +7,10 @@ from dsp_graph.models import (
     AudioOutput,
     BinOp,
     Biquad,
+    Buffer,
+    BufRead,
+    BufSize,
+    BufWrite,
     Change,
     Clamp,
     Compare,
@@ -42,7 +46,7 @@ from dsp_graph.toposort import toposort
 from dsp_graph.validate import validate_graph
 from dsp_graph.visualize import graph_to_dot, graph_to_dot_file
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "Accum",
@@ -51,6 +55,10 @@ __all__ = [
     "AudioOutput",
     "BinOp",
     "Biquad",
+    "BufRead",
+    "BufSize",
+    "BufWrite",
+    "Buffer",
     "Change",
     "Clamp",
     "Compare",

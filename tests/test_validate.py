@@ -5,6 +5,10 @@ from dsp_graph import (
     AudioInput,
     AudioOutput,
     BinOp,
+    Buffer,
+    BufRead,
+    BufSize,
+    BufWrite,
     DelayLine,
     DelayRead,
     DelayWrite,
@@ -131,6 +135,50 @@ class TestDelayConsistency:
                 DelayLine(id="dl"),
                 DelayRead(id="dr", delay="dl", tap=100.0),
                 DelayWrite(id="dw", delay="dl", value=1.0),
+            ],
+        )
+        assert validate_graph(g) == []
+
+
+# ---------------------------------------------------------------------------
+# Buffer consistency
+# ---------------------------------------------------------------------------
+
+
+class TestBufferConsistency:
+    def test_bufread_references_nonexistent_buffer(self) -> None:
+        g = Graph(
+            name="test",
+            nodes=[BufRead(id="br", buffer="missing", index=0.0)],
+        )
+        errors = validate_graph(g)
+        assert any("non-existent buffer 'missing'" in e for e in errors)
+
+    def test_bufwrite_references_nonexistent_buffer(self) -> None:
+        g = Graph(
+            name="test",
+            nodes=[BufWrite(id="bw", buffer="missing", index=0.0, value=0.0)],
+        )
+        errors = validate_graph(g)
+        assert any("non-existent buffer 'missing'" in e for e in errors)
+
+    def test_bufsize_references_nonexistent_buffer(self) -> None:
+        g = Graph(
+            name="test",
+            nodes=[BufSize(id="bs", buffer="missing")],
+        )
+        errors = validate_graph(g)
+        assert any("non-existent buffer 'missing'" in e for e in errors)
+
+    def test_valid_buffer_references(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="buf", size=1024),
+                BufRead(id="br", buffer="buf", index=0.0),
+                BufWrite(id="bw", buffer="buf", index=0.0, value=0.0),
+                BufSize(id="bs", buffer="buf"),
             ],
         )
         assert validate_graph(g) == []

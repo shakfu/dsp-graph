@@ -12,6 +12,10 @@ from dsp_graph import (
     AudioInput,
     AudioOutput,
     Biquad,
+    Buffer,
+    BufRead,
+    BufSize,
+    BufWrite,
     Change,
     Compare,
     Constant,
@@ -326,6 +330,60 @@ class TestGraphToDot:
         )
         dot = graph_to_dot(g)
         assert "counter" in dot
+        assert "#fde0c8" in dot
+
+    def test_buffer_node(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="buf", size=1024),
+                BufRead(id="br", buffer="buf", index=0.0),
+            ],
+        )
+        dot = graph_to_dot(g)
+        assert "buffer[1024]" in dot
+        assert "box3d" in dot
+        assert "#fde0c8" in dot
+
+    def test_bufread_node(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="buf", size=1024),
+                BufRead(id="br", buffer="buf", index=0.0),
+            ],
+        )
+        dot = graph_to_dot(g)
+        assert "buf_read" in dot
+        assert "#fde0c8" in dot
+
+    def test_bufwrite_node(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="buf", size=1024),
+                BufRead(id="br", buffer="buf", index=0.0),
+                BufWrite(id="bw", buffer="buf", index=0.0, value=0.0),
+            ],
+        )
+        dot = graph_to_dot(g)
+        assert "buf_write" in dot
+        assert "#fde0c8" in dot
+
+    def test_bufsize_node(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="bs")],
+            nodes=[
+                Buffer(id="buf", size=1024),
+                BufSize(id="bs", buffer="buf"),
+            ],
+        )
+        dot = graph_to_dot(g)
+        assert "buf_size" in dot
         assert "#fde0c8" in dot
 
     def test_all_fixtures_valid_dot(

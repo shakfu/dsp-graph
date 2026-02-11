@@ -12,6 +12,10 @@ from dsp_graph.models import (
     Allpass,
     BinOp,
     Biquad,
+    Buffer,
+    BufRead,
+    BufSize,
+    BufWrite,
     Change,
     Clamp,
     Compare,
@@ -175,7 +179,7 @@ def compile_graph(graph: Graph) -> str:
     # -- destroy()
     w(f"void {name}_destroy({struct_name}* self) {{")
     for node in sorted_nodes:
-        if isinstance(node, DelayLine):
+        if isinstance(node, (DelayLine, Buffer)):
             w(f"    free(self->m_{node.id}_buf);")
     w("    free(self);")
     w("}")
@@ -205,6 +209,11 @@ def compile_graph(graph: Graph) -> str:
     _emit_param_set(graph.params, name, struct_name, w)
     w("")
     _emit_param_get(graph.params, name, struct_name, w)
+    w("")
+
+    # -- Buffer API
+    buffer_nodes = [n for n in sorted_nodes if isinstance(n, Buffer)]
+    _emit_buffer_api(buffer_nodes, name, struct_name, w)
 
     return "\n".join(lines) + "\n"
 
@@ -265,6 +274,9 @@ def _emit_state_fields(node: Node, w: _Writer) -> None:
     elif isinstance(node, Counter):
         w(f"    int m_{node.id}_count;")
         w(f"    float m_{node.id}_ptrig;")
+    elif isinstance(node, Buffer):
+        w(f"    float* m_{node.id}_buf;")
+        w(f"    int m_{node.id}_len;")
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +312,9 @@ def _emit_state_init(node: Node, w: _Writer) -> None:
     elif isinstance(node, (SampleHold, Latch)):
         w(f"    self->m_{node.id}_held = 0.0f;")
         w(f"    self->m_{node.id}_ptrig = 0.0f;")
+    elif isinstance(node, Buffer):
+        w(f"    self->m_{node.id}_len = {node.size};")
+        w(f"    self->m_{node.id}_buf = (float*)calloc({node.size}, sizeof(float));")
 
 
 # ---------------------------------------------------------------------------
@@ -396,6 +411,9 @@ def _emit_state_load(node: Node, w: _Writer) -> None:
     elif isinstance(node, Counter):
         w(f"    int {node.id}_count = self->m_{node.id}_count;")
         w(f"    float {node.id}_ptrig = self->m_{node.id}_ptrig;")
+    elif isinstance(node, Buffer):
+        w(f"    float* {node.id}_buf = self->m_{node.id}_buf;")
+        w(f"    int {node.id}_len = self->m_{node.id}_len;")
 
 
 def _emit_state_save(node: Node, w: _Writer) -> None:
@@ -687,6 +705,36 @@ def _emit_node_compute(
         w(f"        {nid}_ptrig = {nid}_t;")
         w(f"        float {nid} = (float){nid}_count;")
 
+    elif isinstance(node, Buffer):
+        # State-only node, no per-sample computation
+        pass
+
+    elif isinstance(node, BufRead):
+        nid = node.id
+        buf = node.buffer
+        idx = ref(node.index)
+        if node.interp == "none":
+            w(f"        int {nid}_idx = (int)({idx});")
+            w(f"        if ({nid}_idx < 0) {nid}_idx = 0;")
+            w(f"        if ({nid}_idx >= {buf}_len) {nid}_idx = {buf}_len - 1;")
+            w(f"        float {nid} = {buf}_buf[{nid}_idx];")
+        elif node.interp == "linear":
+            _emit_buf_interp_linear(nid, buf, idx, w)
+        elif node.interp == "cubic":
+            _emit_buf_interp_cubic(nid, buf, idx, w)
+
+    elif isinstance(node, BufWrite):
+        nid = node.id
+        buf = node.buffer
+        idx = ref(node.index)
+        val = ref(node.value)
+        w(f"        int {nid}_idx = (int)({idx});")
+        w(f"        if ({nid}_idx >= 0 && {nid}_idx < {buf}_len)")
+        w(f"            {buf}_buf[{nid}_idx] = {val};")
+
+    elif isinstance(node, BufSize):
+        w(f"        float {node.id} = (float){node.buffer}_len;")
+
 
 # ---------------------------------------------------------------------------
 # Interpolation helpers
@@ -726,6 +774,59 @@ def _emit_interp_cubic(nid: str, dl: str, tap: str, w: _Writer) -> None:
     w(f"        float {nid}_y0 = {dl}_buf[{nid}_i0];")
     w(f"        float {nid}_y1 = {dl}_buf[{nid}_i1];")
     w(f"        float {nid}_y2 = {dl}_buf[{nid}_i2];")
+    w(f"        float {nid}_c0 = {nid}_y0;")
+    w(f"        float {nid}_c1 = 0.5f * ({nid}_y1 - {nid}_ym1);")
+    c2a = f"{nid}_ym1 - 2.5f * {nid}_y0"
+    c2b = f"2.0f * {nid}_y1 - 0.5f * {nid}_y2"
+    w(f"        float {nid}_c2 = {c2a} + {c2b};")
+    c3a = f"0.5f * ({nid}_y2 - {nid}_ym1)"
+    c3b = f"1.5f * ({nid}_y0 - {nid}_y1)"
+    w(f"        float {nid}_c3 = {c3a} + {c3b};")
+    horner = (
+        f"(({nid}_c3 * {nid}_frac + {nid}_c2) * {nid}_frac + {nid}_c1) * {nid}_frac + {nid}_c0"
+    )
+    w(f"        float {nid} = {horner};")
+
+
+# ---------------------------------------------------------------------------
+# Buffer interpolation helpers
+# ---------------------------------------------------------------------------
+
+
+def _clamp_buf_idx(nid: str, suffix: str, buf: str, w: _Writer) -> None:
+    """Emit clamping for a buffer index variable to [0, buf_len-1]."""
+    var = f"{nid}_{suffix}"
+    w(f"        if ({var} < 0) {var} = 0;")
+    w(f"        if ({var} >= {buf}_len) {var} = {buf}_len - 1;")
+
+
+def _emit_buf_interp_linear(nid: str, buf: str, idx: str, w: _Writer) -> None:
+    w(f"        float {nid}_fidx = {idx};")
+    w(f"        int {nid}_i0 = (int){nid}_fidx;")
+    w(f"        float {nid}_frac = {nid}_fidx - (float){nid}_i0;")
+    w(f"        int {nid}_i1 = {nid}_i0 + 1;")
+    _clamp_buf_idx(nid, "i0", buf, w)
+    _clamp_buf_idx(nid, "i1", buf, w)
+    w(f"        float {nid}_s0 = {buf}_buf[{nid}_i0];")
+    w(f"        float {nid}_s1 = {buf}_buf[{nid}_i1];")
+    w(f"        float {nid} = {nid}_s0 + {nid}_frac * ({nid}_s1 - {nid}_s0);")
+
+
+def _emit_buf_interp_cubic(nid: str, buf: str, idx: str, w: _Writer) -> None:
+    w(f"        float {nid}_fidx = {idx};")
+    w(f"        int {nid}_i0 = (int){nid}_fidx;")
+    w(f"        float {nid}_frac = {nid}_fidx - (float){nid}_i0;")
+    w(f"        int {nid}_im1 = {nid}_i0 - 1;")
+    w(f"        int {nid}_i1 = {nid}_i0 + 1;")
+    w(f"        int {nid}_i2 = {nid}_i0 + 2;")
+    _clamp_buf_idx(nid, "im1", buf, w)
+    _clamp_buf_idx(nid, "i0", buf, w)
+    _clamp_buf_idx(nid, "i1", buf, w)
+    _clamp_buf_idx(nid, "i2", buf, w)
+    w(f"        float {nid}_ym1 = {buf}_buf[{nid}_im1];")
+    w(f"        float {nid}_y0 = {buf}_buf[{nid}_i0];")
+    w(f"        float {nid}_y1 = {buf}_buf[{nid}_i1];")
+    w(f"        float {nid}_y2 = {buf}_buf[{nid}_i2];")
     w(f"        float {nid}_c0 = {nid}_y0;")
     w(f"        float {nid}_c1 = 0.5f * ({nid}_y1 - {nid}_ym1);")
     c2a = f"{nid}_ym1 - 2.5f * {nid}_y0"
@@ -785,4 +886,61 @@ def _emit_param_get(params: list[Param], name: str, struct_name: str, w: _Writer
         w(f"    case {idx}: return self->p_{p.name};")
     w("    default: return 0.0f;")
     w("    }")
+    w("}")
+
+
+# ---------------------------------------------------------------------------
+# Buffer introspection API
+# ---------------------------------------------------------------------------
+
+
+def _emit_buffer_api(buffer_nodes: list[Buffer], name: str, struct_name: str, w: _Writer) -> None:
+    count = len(buffer_nodes)
+
+    # num_buffers
+    w(f"int {name}_num_buffers(void) {{ return {count}; }}")
+    w("")
+
+    # buffer_name
+    w(f"const char* {name}_buffer_name(int index) {{")
+    w("    switch (index) {")
+    for idx, buf in enumerate(buffer_nodes):
+        w(f'    case {idx}: return "{buf.id}";')
+    w('    default: return "";')
+    w("    }")
+    w("}")
+    w("")
+
+    # buffer_size
+    w(f"int {name}_buffer_size({struct_name}* self, int index) {{")
+    w("    switch (index) {")
+    for idx, buf in enumerate(buffer_nodes):
+        w(f"    case {idx}: return self->m_{buf.id}_len;")
+    w("    default: return 0;")
+    w("    }")
+    w("}")
+    w("")
+
+    # get_buffer
+    w(f"float* {name}_get_buffer({struct_name}* self, int index) {{")
+    w("    switch (index) {")
+    for idx, buf in enumerate(buffer_nodes):
+        w(f"    case {idx}: return self->m_{buf.id}_buf;")
+    w("    default: return nullptr;")
+    w("    }")
+    w("}")
+    w("")
+
+    # set_buffer
+    w(f"void {name}_set_buffer({struct_name}* self, int index, const float* data, int len) {{")
+    w("    float* dst = nullptr;")
+    w("    int cap = 0;")
+    w("    switch (index) {")
+    for idx, buf in enumerate(buffer_nodes):
+        w(f"    case {idx}: dst = self->m_{buf.id}_buf; cap = self->m_{buf.id}_len; break;")
+    w("    default: return;")
+    w("    }")
+    w("    int copy_len = len < cap ? len : cap;")
+    w("    for (int i = 0; i < copy_len; i++) dst[i] = data[i];")
+    w("    for (int i = copy_len; i < cap; i++) dst[i] = 0.0f;")
     w("}")

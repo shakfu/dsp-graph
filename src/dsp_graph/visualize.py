@@ -13,6 +13,10 @@ from dsp_graph.models import (
     Allpass,
     BinOp,
     Biquad,
+    Buffer,
+    BufRead,
+    BufSize,
+    BufWrite,
     Change,
     Clamp,
     Compare,
@@ -104,6 +108,14 @@ def _node_attrs(node: object) -> tuple[str, str, str]:
         return "box", "#fde0c8", f"{node.id}\\naccum"
     if isinstance(node, Counter):
         return "box", "#fde0c8", f"{node.id}\\ncounter"
+    if isinstance(node, Buffer):
+        return "box3d", "#fde0c8", f"{node.id}\\nbuffer[{node.size}]"
+    if isinstance(node, BufRead):
+        return "box", "#fde0c8", f"{node.id}\\nbuf_read"
+    if isinstance(node, BufWrite):
+        return "box", "#fde0c8", f"{node.id}\\nbuf_write"
+    if isinstance(node, BufSize):
+        return "box", "#fde0c8", f"{node.id}\\nbuf_size"
     return "box", "#ffffff", str(getattr(node, "id", "?"))
 
 

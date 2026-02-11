@@ -13,6 +13,10 @@ from dsp_graph import (
     AudioOutput,
     BinOp,
     Biquad,
+    Buffer,
+    BufRead,
+    BufSize,
+    BufWrite,
     Change,
     Clamp,
     Compare,
@@ -257,6 +261,39 @@ class TestNodeConstruction:
         assert n.op == "counter"
         assert n.max == 16.0
 
+    def test_buffer(self) -> None:
+        n = Buffer(id="buf", size=1024)
+        assert n.op == "buffer"
+        assert n.size == 1024
+
+    def test_buffer_default_size(self) -> None:
+        n = Buffer(id="buf")
+        assert n.size == 48000
+
+    def test_bufread(self) -> None:
+        n = BufRead(id="br", buffer="buf", index=0.0)
+        assert n.op == "buf_read"
+        assert n.buffer == "buf"
+        assert n.index == 0.0
+        assert n.interp == "none"
+
+    def test_bufread_interp(self) -> None:
+        n = BufRead(id="br", buffer="buf", index=0.0, interp="linear")
+        assert n.interp == "linear"
+        n2 = BufRead(id="br2", buffer="buf", index=0.0, interp="cubic")
+        assert n2.interp == "cubic"
+
+    def test_bufwrite(self) -> None:
+        n = BufWrite(id="bw", buffer="buf", index=0.0, value=1.0)
+        assert n.op == "buf_write"
+        assert n.buffer == "buf"
+        assert n.value == 1.0
+
+    def test_bufsize(self) -> None:
+        n = BufSize(id="bs", buffer="buf")
+        assert n.op == "buf_size"
+        assert n.buffer == "buf"
+
 
 # ---------------------------------------------------------------------------
 # Param defaults
@@ -347,6 +384,21 @@ class TestJsonRoundTrip:
                 Latch(id="la", a="in1", trig=0.0),
                 Accum(id="ac", incr=1.0, reset=0.0),
                 Counter(id="ct", trig=0.0, max=16.0),
+            ],
+        )
+        json_str = g.model_dump_json()
+        restored = Graph.model_validate_json(json_str)
+        assert restored == g
+
+    def test_v04_nodes_json_roundtrip(self) -> None:
+        g = Graph(
+            name="v04_types",
+            outputs=[AudioOutput(id="out1", source="br")],
+            nodes=[
+                Buffer(id="buf", size=1024),
+                BufRead(id="br", buffer="buf", index=0.0, interp="linear"),
+                BufWrite(id="bw", buffer="buf", index=0.0, value=0.0),
+                BufSize(id="bs", buffer="buf"),
             ],
         )
         json_str = g.model_dump_json()
@@ -460,6 +512,22 @@ class TestDiscriminatedUnion:
         assert isinstance(g.nodes[11], Accum)
         assert isinstance(g.nodes[12], Counter)
 
+    def test_v04_ops_from_json(self) -> None:
+        raw = {
+            "name": "test",
+            "nodes": [
+                {"id": "buf", "op": "buffer", "size": 1024},
+                {"id": "br", "op": "buf_read", "buffer": "buf", "index": 0.0},
+                {"id": "bw", "op": "buf_write", "buffer": "buf", "index": 0.0, "value": 0.0},
+                {"id": "bs", "op": "buf_size", "buffer": "buf"},
+            ],
+        }
+        g = Graph.model_validate(raw)
+        assert isinstance(g.nodes[0], Buffer)
+        assert isinstance(g.nodes[1], BufRead)
+        assert isinstance(g.nodes[2], BufWrite)
+        assert isinstance(g.nodes[3], BufSize)
+
     def test_invalid_op_rejected(self) -> None:
         raw = {
             "name": "test",
@@ -519,8 +587,12 @@ class TestGraphStructure:
                 Latch(id="la", a="in1", trig=0.0),
                 Accum(id="ac", incr=1.0, reset=0.0),
                 Counter(id="ct", trig=0.0, max=16.0),
+                Buffer(id="buf", size=1024),
+                BufRead(id="br", buffer="buf", index=0.0),
+                BufWrite(id="bw", buffer="buf", index=0.0, value=0.0),
+                BufSize(id="bs", buffer="buf"),
             ],
         )
         json_str = g.model_dump_json()
         restored = Graph.model_validate_json(json_str)
-        assert len(restored.nodes) == 30
+        assert len(restored.nodes) == 34

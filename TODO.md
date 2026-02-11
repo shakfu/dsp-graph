@@ -81,10 +81,10 @@
 
 ### v0.4 -- Buffers and Tables
 
-- [ ] `Buffer` / `BufRead` / `BufWrite` / `BufSize` node family
-- [ ] Interpolation modes for `BufRead` (none, linear, cubic)
-- [ ] External buffer loading API (fill from Python, pass to C++)
-- [ ] Wavetable oscillator as `Buffer` + `Phasor` + `BufRead`
+- [x] `Buffer` / `BufRead` / `BufWrite` / `BufSize` node family
+- [x] Interpolation modes for `BufRead` (none, linear, cubic)
+- [x] External buffer loading API (fill from Python, pass to C++)
+- [x] Wavetable oscillator as `Buffer` + `Phasor` + `BufRead`
 
 ### v0.5 -- gen-dsp Integration
 
