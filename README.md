@@ -7,7 +7,15 @@ Define audio processing graphs using Pydantic models, validate them, compile to 
 ## Install
 
 ```bash
-uv pip install -e .
+pip install dsp-graph
+```
+
+For development:
+
+```bash
+git clone https://github.com/shakfu/dsp-graph.git
+cd dsp-graph
+make install-dev
 ```
 
 ## Quick Start
@@ -124,7 +132,7 @@ path = compile_graph_to_file(graph, "build/")  # writes build/{name}.cpp
 
 ## gen-dsp Integration
 
-dsp-graph graphs can be compiled into buildable audio plugin projects via [gen-dsp](https://github.com/your-repo/gen-dsp), which supports 11 platforms: ChucK, CLAP, AudioUnit, VST3, LV2, SuperCollider, VCV Rack, Daisy, and more.
+dsp-graph graphs can be compiled into buildable audio plugin projects via [gen-dsp](https://github.com/shakfu/gen-dsp), which supports 11 platforms: ChucK, CLAP, AudioUnit, VST3, LV2, SuperCollider, VCV Rack, Daisy, and more.
 
 `compile_for_gen_dsp()` generates the three files needed to drop into any gen-dsp platform backend:
 

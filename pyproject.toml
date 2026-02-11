@@ -1,11 +1,29 @@
 [project]
 name = "dsp-graph"
 version = "0.1.5"
-description = "A Python DSL for defining DSP signal graphs with JSON serialization"
+description = "A Python DSL for defining DSP signal graphs with C++ compilation and optimization"
 readme = "README.md"
-license = "MIT"
+license = {text = "MIT"}
 authors = [
     { name = "Shakeeb Alireza", email = "shakfu@users.noreply.github.com" }
+]
+keywords = ["dsp", "audio", "signal-processing", "codegen", "c++", "pydantic", "graph"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Other Audience",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Software Development :: Code Generators",
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -19,7 +37,14 @@ dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.15.0",
+    "twine>=6.2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/shakfu/dsp-graph"
+Repository = "https://github.com/shakfu/dsp-graph"
+Changelog = "https://github.com/shakfu/dsp-graph/blob/main/CHANGELOG.md"
+Issues = "https://github.com/shakfu/dsp-graph/issues"
 
 [build-system]
 requires = ["uv_build>=0.10.2,<0.11.0"]
@@ -41,4 +66,3 @@ line-length = 99
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
-

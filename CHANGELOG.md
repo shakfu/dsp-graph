@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `eliminate_cse()` optimization pass: graph-level common subexpression elimination merges duplicate pure nodes (same type, op, and resolved refs) and rewrites all references to the canonical node. Commutative ops (`add`, `mul`, `min`, `max`) detected regardless of operand order. Stateful nodes never merged. Integrated into `optimize_graph()` between constant folding and dead node elimination.
 - Loop-invariant code motion (LICM): pure nodes whose inputs are all params, literals, or other invariant nodes are hoisted before the `for` loop, reducing per-sample overhead.
 - SIMD vectorization hints: I/O buffer pointers declared `float* __restrict` to inform the compiler they don't alias. For pure-only graphs (no stateful nodes), `#pragma clang loop vectorize(enable)` / `#pragma GCC ivdep` emitted before the sample loop.
+- PEP 561 `py.typed` marker for downstream mypy consumers.
+- PyPI metadata: classifiers, keywords, project URLs, `twine` in dev dependencies.
+- Package-level docstring in `__init__.py`.
+- Makefile targets: `dist`, `sdist`, `check`, `publish-test`, `publish`.
 
 ## [0.1.4]
 

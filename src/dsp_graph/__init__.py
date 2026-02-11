@@ -1,3 +1,11 @@
+"""Define DSP signal graphs as Pydantic models, compile to C++, and optimize.
+
+Provides 34 node types (arithmetic, filters, oscillators, delays, buffers,
+state/timing), graph validation, topological sort, Graphviz visualization,
+and a multi-pass optimizing compiler targeting standalone C++. Optional
+gen-dsp integration generates adapter code for 10+ audio plugin platforms.
+"""
+
 from dsp_graph.compile import compile_graph, compile_graph_to_file
 from dsp_graph.gen_dsp_adapter import (
     compile_for_gen_dsp,
