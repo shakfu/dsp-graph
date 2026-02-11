@@ -942,7 +942,7 @@ class TestBufferNodes:
             output_src="bs",
         )
         code = compile_graph(g)
-        assert "float bs = (float)buf_len;" in code
+        assert "float bs = (float)self->m_buf_len;" in code
 
 
 class TestBufferAPI:

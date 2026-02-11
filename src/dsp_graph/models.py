@@ -412,6 +412,8 @@ Node = Annotated[
 class Graph(BaseModel):
     name: str
     sample_rate: float = 44100.0
+    control_interval: int = 0  # 0 = disabled; >0 = samples per control block
+    control_nodes: list[str] = []  # node IDs that run at control rate
     inputs: list[AudioInput] = []
     outputs: list[AudioOutput] = []
     params: list[Param] = []

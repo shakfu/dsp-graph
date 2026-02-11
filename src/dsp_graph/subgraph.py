@@ -19,10 +19,17 @@ def expand_subgraphs(graph: Graph) -> Graph:
     out_nodes: list[Node] = []
     # Maps subgraph ID (and compound IDs) to the expanded output node ID
     output_map: dict[str, str] = {}
+    # Collect prefixed control_nodes from inner subgraphs
+    new_control_nodes: list[str] = list(graph.control_nodes)
 
     for node in graph.nodes:
         if isinstance(node, Subgraph):
             _expand_one(node, out_nodes, output_map)
+            # Propagate inner graph's control_nodes with prefix
+            inner = expand_subgraphs(node.graph)
+            prefix = node.id + "__"
+            for cn_id in inner.control_nodes:
+                new_control_nodes.append(prefix + cn_id)
         else:
             out_nodes.append(node)
 
@@ -37,7 +44,10 @@ def expand_subgraphs(graph: Graph) -> Graph:
         else:
             new_outputs.append(out)
 
-    return graph.model_copy(update={"nodes": out_nodes, "outputs": new_outputs})
+    updates: dict[str, object] = {"nodes": out_nodes, "outputs": new_outputs}
+    if new_control_nodes != list(graph.control_nodes):
+        updates["control_nodes"] = new_control_nodes
+    return graph.model_copy(update=updates)
 
 
 def _expand_one(

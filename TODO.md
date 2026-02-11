@@ -66,7 +66,7 @@ All originally planned node types have been implemented (38 total). See README.m
 ### Future
 
 - [x] Subgraph / macro nodes (inline a Graph as a node in another Graph)
-- [ ] Multi-rate processing (control-rate vs audio-rate distinction)
+- [x] Multi-rate processing (control-rate vs audio-rate distinction)
 - [x] Python DSP simulator (interpret graph in Python for prototyping)
 - [ ] WebAssembly codegen target
-- [ ] FAUST-style block diagram algebra (series `>>`, parallel `<<`, split/merge)
+- [x] FAUST-style block diagram algebra (series `>>`, parallel `<<`, split/merge)

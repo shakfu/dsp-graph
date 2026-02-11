@@ -12,6 +12,7 @@ A per-sample Python simulator is available via the ``simulate`` module
     from dsp_graph.simulate import simulate, SimState, SimResult
 """
 
+from dsp_graph.algebra import merge, parallel, series, split
 from dsp_graph.compile import compile_graph, compile_graph_to_file
 from dsp_graph.gen_dsp_adapter import (
     compile_for_gen_dsp,
@@ -119,6 +120,10 @@ __all__ = [
     "TriOsc",
     "UnaryOp",
     "Wrap",
+    "merge",
+    "parallel",
+    "series",
+    "split",
     "compile_for_gen_dsp",
     "compile_graph",
     "compile_graph_to_file",

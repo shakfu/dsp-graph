@@ -12,7 +12,9 @@ from dsp_graph.models import (
     DelayRead,
     DelayWrite,
     Graph,
+    History,
 )
+from dsp_graph.optimize import _STATEFUL_TYPES
 
 
 def _collect_refs(node: object) -> list[str]:
@@ -99,7 +101,58 @@ def validate_graph(graph: Graph) -> list[str]:
         if isinstance(node, BufSize) and node.buffer not in buffer_ids:
             errors.append(f"BufSize '{node.id}' references non-existent buffer '{node.buffer}'")
 
-    # 5. No pure cycles -- topo sort on non-feedback edges must succeed
+    # 5. Control-rate consistency
+    if graph.control_interval > 0 and graph.control_nodes:
+        ctrl_set = set(graph.control_nodes)
+        node_id_set = set(node_ids)
+
+        for cid in graph.control_nodes:
+            if cid not in node_id_set:
+                errors.append(f"control_nodes: '{cid}' is not a node ID")
+
+        # Compute invariant node IDs: pure nodes depending only on
+        # params/literals/other invariant nodes.  These are LICM-hoistable and
+        # safe for control-rate nodes to reference.
+        invariant_ids: set[str] = set()
+        node_by_id = {n.id: n for n in graph.nodes}
+        for node in graph.nodes:
+            if isinstance(node, _STATEFUL_TYPES):
+                continue
+            is_inv = True
+            for fn, val in node.__dict__.items():
+                if fn in _NON_REF_FIELDS:
+                    continue
+                if isinstance(val, float):
+                    continue
+                if isinstance(val, str):
+                    if val in param_names or val in invariant_ids:
+                        continue
+                    is_inv = False
+                    break
+            if is_inv:
+                invariant_ids.add(node.id)
+
+        # Allowed deps for a control-rate node: params, other ctrl nodes, invariant nodes
+        allowed = ctrl_set | param_names | invariant_ids
+        for cid in graph.control_nodes:
+            if cid not in node_by_id:
+                continue
+            node = node_by_id[cid]
+            if isinstance(node, History):
+                continue
+            for field_name, value in node.__dict__.items():
+                if field_name in _NON_REF_FIELDS:
+                    continue
+                if not isinstance(value, str):
+                    continue
+                if value in input_ids:
+                    errors.append(f"Control-rate node '{cid}' depends on audio input '{value}'")
+                elif value in node_id_set and value not in allowed:
+                    errors.append(
+                        f"Control-rate node '{cid}' depends on audio-rate node '{value}'"
+                    )
+
+    # 6. No pure cycles -- topo sort on non-feedback edges must succeed
     deps = build_forward_deps(graph)
 
     # Kahn's algorithm

@@ -456,6 +456,24 @@ def _classify_loop_invariance(
     return invariant_ids
 
 
+def _classify_control_rate(
+    sorted_nodes: list[Node],
+    control_node_ids: set[str],
+    invariant_ids: set[str],
+) -> set[str]:
+    """Return node IDs that should run at control rate.
+
+    Nodes listed in control_node_ids that are already invariant stay hoisted
+    (they don't need to be in the control-rate tier).
+    """
+    return control_node_ids - invariant_ids
+
+
+def _indent_line(line: str, extra: int) -> str:
+    """Add *extra* spaces of indentation to a line."""
+    return " " * extra + line
+
+
 def _emit_perform(
     graph: Graph,
     sorted_nodes: list[Node],
@@ -507,6 +525,47 @@ def _emit_perform(
                 else:
                     w(line)
 
+    ctrl_interval = graph.control_interval
+    ctrl_node_ids = set(graph.control_nodes) if ctrl_interval > 0 else set()
+    ctrl_rate_ids = _classify_control_rate(sorted_nodes, ctrl_node_ids, invariant_ids)
+
+    if ctrl_interval > 0 and ctrl_rate_ids:
+        _emit_perform_two_tier(
+            graph,
+            sorted_nodes,
+            input_ids,
+            param_names,
+            invariant_ids,
+            ctrl_rate_ids,
+            ctrl_interval,
+            w,
+        )
+    else:
+        _emit_perform_single(
+            graph,
+            sorted_nodes,
+            input_ids,
+            param_names,
+            invariant_ids,
+            w,
+        )
+
+    # Save state back
+    for node in sorted_nodes:
+        _emit_state_save(node, w)
+
+    w("}")
+
+
+def _emit_perform_single(
+    graph: Graph,
+    sorted_nodes: list[Node],
+    input_ids: set[str],
+    param_names: set[str],
+    invariant_ids: set[str],
+    w: _Writer,
+) -> None:
+    """Emit the single-loop perform body (no control-rate tier)."""
     # Vectorization pragma -- only when no stateful nodes exist
     has_stateful = any(isinstance(n, _STATEFUL_TYPES) for n in sorted_nodes)
     if not has_stateful:
@@ -536,11 +595,69 @@ def _emit_perform(
 
     w("    }")
 
-    # Save state back
-    for node in sorted_nodes:
-        _emit_state_save(node, w)
 
-    w("}")
+def _emit_perform_two_tier(
+    graph: Graph,
+    sorted_nodes: list[Node],
+    input_ids: set[str],
+    param_names: set[str],
+    invariant_ids: set[str],
+    ctrl_rate_ids: set[str],
+    ctrl_interval: int,
+    w: _Writer,
+) -> None:
+    """Emit the two-tier (control-rate / audio-rate) perform body."""
+    # Outer loop: control blocks
+    w(f"    for (int _cb = 0; _cb < n; _cb += {ctrl_interval}) {{")
+    w(f"        int _block_end = (_cb + {ctrl_interval} < n) ? _cb + {ctrl_interval} : n;")
+
+    # Control-rate nodes (8-space indent = inside outer loop)
+    ctrl_history: list[History] = []
+    ctrl_dw: list[DelayWrite] = []
+    for node in sorted_nodes:
+        if node.id in ctrl_rate_ids:
+            _emit_node_compute(node, input_ids, param_names, w, ctrl_history, ctrl_dw)
+
+    # Inner loop: audio-rate per-sample
+    w("        for (int i = _cb; i < _block_end; i++) {")
+
+    # Audio-rate nodes (12-space indent = inside inner loop)
+    audio_history: list[History] = []
+    audio_dw: list[DelayWrite] = []
+    for node in sorted_nodes:
+        if node.id not in invariant_ids and node.id not in ctrl_rate_ids:
+            # Collect lines at standard 8-space indent, then add 4 more
+            node_lines: list[str] = []
+            _emit_node_compute(
+                node,
+                input_ids,
+                param_names,
+                node_lines.append,
+                audio_history,
+                audio_dw,
+            )
+            for line in node_lines:
+                w(_indent_line(line, 4))
+
+    # Audio-rate History write-backs (12-space indent)
+    for h in audio_history:
+        ref = _emit_ref(h.input, input_ids, param_names)
+        w(f"            {h.id} = {ref};")
+
+    # Output assignments (12-space indent)
+    for out in graph.outputs:
+        w(f"            {out.id}[i] = {out.source};")
+
+    # Close inner loop
+    w("        }")
+
+    # Control-rate History write-backs (8-space indent)
+    for h in ctrl_history:
+        ref = _emit_ref(h.input, input_ids, param_names)
+        w(f"        {h.id} = {ref};")
+
+    # Close outer loop
+    w("    }")
 
 
 def _emit_state_load(node: Node, w: _Writer) -> None:
@@ -916,7 +1033,7 @@ def _emit_node_compute(
         w(f"            {buf}_buf[{nid}_idx] = {val};")
 
     elif isinstance(node, BufSize):
-        w(f"        float {node.id} = (float){node.buffer}_len;")
+        w(f"        float {node.id} = (float)self->m_{node.buffer}_len;")
 
     elif isinstance(node, RateDiv):
         nid = node.id

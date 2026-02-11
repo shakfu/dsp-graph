@@ -291,6 +291,16 @@ def simulate(
     param_names = {p.name for p in state._graph.params}
     sorted_nodes = state._sorted_nodes
 
+    # Classify control-rate nodes
+    ctrl_interval = state._graph.control_interval
+    ctrl_set = set(state._graph.control_nodes) if ctrl_interval > 0 else set()
+    # Split sorted nodes into control-rate and audio-rate
+    ctrl_sorted = [n for n in sorted_nodes if n.id in ctrl_set]
+    audio_sorted = [n for n in sorted_nodes if n.id not in ctrl_set]
+
+    # Persistent vals dict for holding control-rate values across samples
+    held_vals: dict[str, float] = {}
+
     # Sample loop
     for i in range(n_samples):
         vals: dict[str, float] = {}
@@ -312,15 +322,33 @@ def simulate(
             if isinstance(node, History):
                 vals[node.id] = float(state._state[node.id])
 
-        # Track histories for deferred write-back
-        history_nodes: list[History] = []
+        # Control-rate gating
+        is_ctrl_boundary = ctrl_interval > 0 and ctrl_set and i % ctrl_interval == 0
 
-        # Compute nodes in topo order
-        for node in sorted_nodes:
-            _compute_node(node, vals, state, input_ids, param_names, history_nodes)
+        # Inject held control-rate values for non-boundary samples only
+        if ctrl_interval > 0 and ctrl_set and not is_ctrl_boundary:
+            vals.update(held_vals)
 
-        # Deferred history write-backs (after all nodes computed)
-        for h in history_nodes:
+        # Control-rate: compute only at block boundaries
+        if is_ctrl_boundary:
+            ctrl_history: list[History] = []
+            for node in ctrl_sorted:
+                _compute_node(node, vals, state, input_ids, param_names, ctrl_history)
+            # Deferred control-rate history write-backs
+            for h in ctrl_history:
+                state._state[h.id] = _resolve_ref(h.input, vals, input_ids, param_names)
+            # Capture control-rate values for holding
+            for node in ctrl_sorted:
+                if node.id in vals:
+                    held_vals[node.id] = vals[node.id]
+
+        # Audio-rate: every sample
+        audio_history: list[History] = []
+        for node in audio_sorted:
+            _compute_node(node, vals, state, input_ids, param_names, audio_history)
+
+        # Deferred audio-rate history write-backs
+        for h in audio_history:
             state._state[h.id] = _resolve_ref(h.input, vals, input_ids, param_names)
 
         # Write outputs

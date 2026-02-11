@@ -88,6 +88,97 @@ print(state.get_peek("monitor"))
 
 The simulator executes a per-sample Python loop that mirrors the C++ codegen exactly: same topo-sorted node order, same deferred History write-backs, same interpolation formulas.
 
+## Multi-Rate Processing
+
+Nodes can be explicitly assigned to run at control rate (once per block) instead of audio rate (per sample). This is useful for parameter smoothing, coefficient computation, and other operations that don't need per-sample updates.
+
+```python
+from dsp_graph import Graph, AudioInput, AudioOutput, BinOp, Param, SmoothParam
+
+graph = Graph(
+    name="smooth_gain",
+    sample_rate=48000.0,
+    control_interval=64,          # control block = 64 samples
+    control_nodes=["smoother"],   # these nodes run once per block
+    inputs=[AudioInput(id="in0")],
+    outputs=[AudioOutput(id="out0", source="scaled")],
+    params=[Param(name="vol", default=0.5)],
+    nodes=[
+        SmoothParam(id="smoother", a="vol", coeff=0.99),   # control-rate
+        BinOp(id="scaled", op="mul", a="in0", b="smoother"),  # audio-rate
+    ],
+)
+```
+
+When `control_interval > 0`, the generated C++ uses a two-tier loop structure:
+
+```cpp
+for (int _cb = 0; _cb < n; _cb += 64) {
+    int _block_end = (_cb + 64 < n) ? _cb + 64 : n;
+    // Control-rate nodes (once per block)
+    float smoother = ...;
+    for (int i = _cb; i < _block_end; i++) {
+        // Audio-rate nodes (per sample)
+        float scaled = in0[i] * smoother;
+        out0[i] = scaled;
+    }
+}
+```
+
+Nodes are classified into three tiers:
+1. **Invariant** (LICM): pure nodes depending only on params/literals -- hoisted before both loops.
+2. **Control-rate**: nodes listed in `control_nodes` -- computed once per control block.
+3. **Audio-rate**: everything else -- computed per sample.
+
+The simulator mirrors this behavior: control-rate nodes compute at block boundaries and hold their values between updates. Setting `control_interval = 0` (the default) preserves the existing single-loop behavior.
+
+Validation enforces that control-rate nodes cannot depend on audio inputs or audio-rate nodes. Dependencies on params, other control-rate nodes, and invariant nodes are allowed.
+
+## Graph Algebra
+
+FAUST-style block diagram combinators for composing graphs without manually wiring `Subgraph` nodes. Four combinators build new `Graph` objects from existing ones:
+
+```python
+from dsp_graph import Graph, AudioInput, AudioOutput, OnePole, Param
+from dsp_graph.algebra import series, parallel, split, merge
+
+lpf = Graph(
+    name="lpf",
+    inputs=[AudioInput(id="in")],
+    outputs=[AudioOutput(id="out", source="filt")],
+    params=[Param(name="coeff", default=0.5)],
+    nodes=[OnePole(id="filt", a="in", coeff="coeff")],
+)
+hpf = Graph(name="hpf", inputs=[AudioInput(id="in")],
+            outputs=[AudioOutput(id="out", source="filt")],
+            params=[Param(name="coeff", default=0.3)],
+            nodes=[OnePole(id="filt", a="in", coeff="coeff")])
+
+# Series: pipe outputs -> inputs (requires matching counts)
+chain = series(lpf, hpf)  # 1-in, 1-out, params: lpf_coeff, hpf_coeff
+
+# Parallel: stack side by side (independent I/O)
+stack = parallel(lpf, hpf)  # 2-in (lpf_in, hpf_in), 2-out (lpf_out, hpf_out)
+
+# Split: fan-out (cyclic distribution, requires len(b.inputs) % len(a.outputs) == 0)
+duo = split(lpf, stack)  # 1-in, 2-out (lpf output duplicated to both)
+
+# Merge: fan-in (grouped summing, requires len(a.outputs) % len(b.inputs) == 0)
+mono = merge(stack, lpf)  # 2-in, 1-out (stack outputs summed into lpf input)
+```
+
+Operator overloading provides concise syntax -- `>>` for series, `//` for parallel:
+
+```python
+chain = lpf >> hpf           # series
+stack = lpf // hpf           # parallel
+multi = (lpf // hpf) >> out  # parallel then series
+```
+
+Params are namespaced with the subgraph ID prefix at each level of nesting. For `series(lpf, hpf)`, inner param `coeff` becomes `lpf_coeff` and `hpf_coeff`. This compounds with deeper nesting: `series(series(a, b), c)` produces params like `a__b_a_coeff`.
+
+All composed graphs work with `expand_subgraphs()`, `compile_graph()`, `validate_graph()`, and `simulate()`.
+
 ## CLI
 
 The `dsp-graph` command-line tool compiles, validates, and visualizes graph JSON files.
@@ -233,6 +324,7 @@ optimized = optimize_graph(graph)  # constant folding + CSE + dead node eliminat
 - **Common subexpression elimination**: duplicate pure nodes with identical inputs are merged
 - **Dead node elimination**: nodes not reachable from any output are removed (respects side-effecting writers for delay lines and buffers)
 - **Loop-invariant code motion**: param-only expressions are hoisted before the sample loop
+- **Multi-rate processing**: control-rate nodes run once per block in an outer loop, reducing per-sample overhead for smoothing/coefficient computation
 - **SIMD hints**: `__restrict` on I/O pointers; vectorization pragmas for pure-only graphs
 
 ## Validation
@@ -244,7 +336,8 @@ optimized = optimize_graph(graph)  # constant folding + CSE + dead node eliminat
 3. Output sources reference existing nodes
 4. DelayRead/DelayWrite reference existing DelayLine nodes
 5. BufRead/BufWrite/BufSize reference existing Buffer nodes
-6. No pure cycles (cycles must pass through History or delay)
+6. Control-rate consistency: `control_nodes` reference existing nodes, don't depend on audio inputs or audio-rate nodes
+7. No pure cycles (cycles must pass through History or delay)
 
 ## Visualization
 
@@ -263,6 +356,9 @@ See `examples/` for complete working graphs:
 - `onepole.py` -- one-pole lowpass with History feedback
 - `fbdelay.py` -- feedback delay with dry/wet mix
 - `wavetable.py` -- wavetable oscillator using Buffer + Phasor + BufRead
+- `smooth_gain.py` -- control-rate parameter smoothing (multi-rate)
+- `multirate_synth.py` -- control-rate envelope with audio-rate oscillator (multi-rate)
+- `filter_chain.py` -- two filters in series using graph algebra
 
 ## Development
 

@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Multi-rate processing: two-tier loop structure with explicit control-rate vs audio-rate node classification.
+  - `Graph.control_interval`: samples per control block (0 = disabled, default).
+  - `Graph.control_nodes`: list of node IDs that run at control rate (once per block instead of per sample).
+  - Three-tier node classification: invariant (LICM-hoisted), control-rate (outer loop), audio-rate (inner loop).
+  - Generated C++ emits nested loops when `control_interval > 0`: outer loop iterates in block-sized steps, inner loop processes audio-rate nodes per sample. Handles non-divisible block sizes.
+  - Simulator gates control-rate nodes to compute only at block boundaries, holding values between updates. Produces staircase smoothing for stateful control-rate nodes (SmoothParam, OnePole, etc.).
+  - Validation: control-rate nodes cannot depend on audio inputs or audio-rate nodes; dependencies on params, other control-rate nodes, and LICM-invariant nodes are allowed.
+  - Subgraph expansion propagates `control_nodes` with prefix (works recursively for nested subgraphs and through algebra combinators).
+  - When `control_interval = 0` (default), behavior is identical to previous releases -- no codegen or simulation changes.
+- 41 new tests covering model/validation, codegen, simulation, subgraph integration, and edge cases.
+
+- FAUST-style block diagram algebra (`dsp_graph.algebra`): four binary combinators for composing `Graph` objects into new `Graph` objects using `Subgraph` wiring.
+  - `series(a, b)`: pipe a's outputs into b's inputs positionally (requires matching I/O counts).
+  - `parallel(a, b)`: stack side by side with prefixed I/O, no I/O count constraints.
+  - `split(a, b)`: fan-out a's outputs cyclically to fill b's inputs (modular constraint).
+  - `merge(a, b)`: fan-in a's outputs summed in groups to feed b's inputs via `BinOp(op="add")` chains; degenerates to direct wiring when group size is 1.
+  - Operator overloading: `>>` for series, `//` for parallel (active when `algebra` is imported).
+  - Subgraph IDs derived from graph names for readable prefixed params (e.g. `"lpf_cutoff"`).
+  - All params namespaced with subgraph ID prefix for predictable deep nesting.
+  - Composition is expressed purely through `Subgraph` wiring + `expand_subgraphs()` -- no new node types.
+- 57 new tests covering all combinators, operators, simulation correctness, error cases, edge cases, and integration.
+
 - Python DSP simulator (`dsp_graph.simulate`): per-sample graph execution in Python for prototyping, unit-testing, and correctness verification without C++ compilation.
   - `SimState`: holds all mutable state, supports `reset()`, `set_param()`, `get_param()`, `set_buffer()`, `get_buffer()`, `get_peek()`.
   - `simulate()`: runs a per-sample loop over topo-sorted nodes, returns `SimResult` with output arrays and reusable state.
