@@ -149,6 +149,7 @@ def compile_graph(graph: Graph) -> str:
     w("#include <cmath>")
     w("#include <cstdlib>")
     w("#include <cstdint>")
+    w("#include <cstring>")
     w("")
 
     # -- Struct
@@ -183,6 +184,10 @@ def compile_graph(graph: Graph) -> str:
             w(f"    free(self->m_{node.id}_buf);")
     w("    free(self);")
     w("}")
+    w("")
+
+    # -- reset()
+    _emit_reset(graph, sorted_nodes, name, struct_name, w)
     w("")
 
     # -- perform()
@@ -315,6 +320,60 @@ def _emit_state_init(node: Node, w: _Writer) -> None:
     elif isinstance(node, Buffer):
         w(f"    self->m_{node.id}_len = {node.size};")
         w(f"    self->m_{node.id}_buf = (float*)calloc({node.size}, sizeof(float));")
+
+
+# ---------------------------------------------------------------------------
+# reset() -- reinitialize state to creation defaults without reallocating
+# ---------------------------------------------------------------------------
+
+
+def _emit_reset(
+    graph: Graph,
+    sorted_nodes: list[Node],
+    name: str,
+    struct_name: str,
+    w: _Writer,
+) -> None:
+    w(f"void {name}_reset({struct_name}* self) {{")
+    # Reset params to defaults
+    for p in graph.params:
+        w(f"    self->p_{p.name} = {_float_lit(p.default)};")
+    # Reset node state
+    for node in sorted_nodes:
+        _emit_state_reset(node, w)
+    w("}")
+
+
+def _emit_state_reset(node: Node, w: _Writer) -> None:
+    if isinstance(node, History):
+        w(f"    self->m_{node.id} = {_float_lit(node.init)};")
+    elif isinstance(node, DelayLine):
+        w(f"    memset(self->m_{node.id}_buf, 0, self->m_{node.id}_len * sizeof(float));")
+        w(f"    self->m_{node.id}_wr = 0;")
+    elif isinstance(node, (Phasor, SinOsc, TriOsc, SawOsc, PulseOsc)):
+        w(f"    self->m_{node.id}_phase = 0.0f;")
+    elif isinstance(node, Noise):
+        w(f"    self->m_{node.id}_seed = 123456789u;")
+    elif isinstance(node, (Delta, Change)):
+        w(f"    self->m_{node.id}_prev = 0.0f;")
+    elif isinstance(node, (Biquad, SVF)):
+        w(f"    self->m_{node.id}_s1 = 0.0f;")
+        w(f"    self->m_{node.id}_s2 = 0.0f;")
+    elif isinstance(node, OnePole):
+        w(f"    self->m_{node.id}_prev = 0.0f;")
+    elif isinstance(node, (DCBlock, Allpass)):
+        w(f"    self->m_{node.id}_xprev = 0.0f;")
+        w(f"    self->m_{node.id}_yprev = 0.0f;")
+    elif isinstance(node, (SampleHold, Latch)):
+        w(f"    self->m_{node.id}_held = 0.0f;")
+        w(f"    self->m_{node.id}_ptrig = 0.0f;")
+    elif isinstance(node, Accum):
+        w(f"    self->m_{node.id}_sum = 0.0f;")
+    elif isinstance(node, Counter):
+        w(f"    self->m_{node.id}_count = 0;")
+        w(f"    self->m_{node.id}_ptrig = 0.0f;")
+    elif isinstance(node, Buffer):
+        w(f"    memset(self->m_{node.id}_buf, 0, self->m_{node.id}_len * sizeof(float));")
 
 
 # ---------------------------------------------------------------------------

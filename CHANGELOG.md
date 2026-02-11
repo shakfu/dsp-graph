@@ -1,6 +1,26 @@
 # Changelog
 
-## 0.4.0 -- Buffers and Tables
+## 0.5.0
+
+### gen-dsp integration
+
+- New `compile_for_gen_dsp(graph, output_dir, platform)` generates adapter files that bridge dsp-graph output to gen-dsp's 11 platform backends (ChucK, CLAP, AU, VST3, LV2, SC, VCV Rack, Daisy, etc.)
+- New `generate_adapter_cpp(graph, platform)` generates `_ext_{platform}.cpp` implementing gen-dsp's wrapper interface (`wrapper_create`, `wrapper_perform`, params, buffers) by delegating to dsp-graph's compiled API
+- New `generate_manifest(graph)` produces `manifest.json` compatible with `gen_dsp.core.manifest.Manifest.from_json()`
+- New `assemble_project(graph, output_dir, platform)` assembles a complete buildable project by combining dsp-graph output with gen-dsp platform templates (requires gen-dsp installed)
+
+### Reset function
+
+- Generated C++ now includes `{name}_reset()` -- reinitializes all state to creation defaults without reallocating memory
+- Covers all stateful node types: History (to init value), DelayLine/Buffer (zeroed via `memset`), oscillators/Phasor (phase reset), Noise (seed reset), filters (state zeroed), SampleHold/Latch/Accum/Counter (zeroed)
+- Generated code now includes `<cstring>` for `memset`
+
+### Other
+
+- Version bumped to 0.5.0
+- New `gen_dsp_graph` test fixture exercising oscillators, filters, delays, buffers, and params
+
+## 0.1.4
 
 - Added `Buffer` / `BufRead` / `BufWrite` / `BufSize` node family (4 new node types, 34 total)
 - `BufRead` supports `none`, `linear`, and `cubic` interpolation (clamped indices)
@@ -13,7 +33,7 @@
 - Graphviz visualization for buffer nodes (peach fill, box3d for Buffer)
 - Wavetable oscillator example (`examples/wavetable.py`)
 
-## 0.3.0 -- Filters and Oscillators
+## 0.1.3
 
 - Added filter nodes: `Biquad`, `SVF` (lp/hp/bp/notch), `OnePole`, `DCBlock`, `Allpass`
 - Added oscillator nodes: `SinOsc`, `TriOsc`, `SawOsc`, `PulseOsc`
@@ -21,7 +41,7 @@
 - Extended `UnaryOp` with inverse trig: `atan`, `asin`, `acos`
 - Graphviz visualization for all new node types
 
-## 0.2.0 -- Core Completeness
+## 0.1.1
 
 - Added `Compare` (`gt`, `lt`, `gte`, `lte`, `eq`) and `Select` nodes
 - Added `Wrap` and `Fold` boundary nodes
@@ -33,7 +53,7 @@
 - Optimization: dead node elimination (unreachable nodes removed)
 - Interpolated delay reads: `linear` and `cubic` modes on `DelayRead`
 
-## 0.1.0 -- Initial Release
+## 0.1.0
 
 - Core graph model with Pydantic: `Graph`, `Param`, `AudioInput`, `AudioOutput`
 - Node types: `BinOp` (add/sub/mul/div), `UnaryOp` (sin/cos/tanh/exp/log/abs/sqrt/neg), `Clamp`, `Constant`

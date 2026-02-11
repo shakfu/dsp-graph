@@ -1,4 +1,9 @@
 from dsp_graph.compile import compile_graph, compile_graph_to_file
+from dsp_graph.gen_dsp_adapter import (
+    compile_for_gen_dsp,
+    generate_adapter_cpp,
+    generate_manifest,
+)
 from dsp_graph.models import (
     SVF,
     Accum,
@@ -46,7 +51,7 @@ from dsp_graph.toposort import toposort
 from dsp_graph.validate import validate_graph
 from dsp_graph.visualize import graph_to_dot, graph_to_dot_file
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "Accum",
@@ -89,10 +94,13 @@ __all__ = [
     "TriOsc",
     "UnaryOp",
     "Wrap",
+    "compile_for_gen_dsp",
     "compile_graph",
     "compile_graph_to_file",
     "constant_fold",
     "eliminate_dead_nodes",
+    "generate_adapter_cpp",
+    "generate_manifest",
     "graph_to_dot",
     "graph_to_dot_file",
     "optimize_graph",

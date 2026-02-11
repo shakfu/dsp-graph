@@ -110,7 +110,7 @@ print(graph.model_dump_json(indent=2))
 `compile_graph()` generates a single self-contained `.cpp` file with:
 
 - A state struct (`{Name}State`)
-- `create(sr)` / `destroy(self)` lifecycle
+- `create(sr)` / `destroy(self)` / `reset(self)` lifecycle
 - `perform(self, ins, outs, n)` sample-processing loop
 - Param introspection: `num_params`, `param_name`, `param_min`, `param_max`, `set_param`, `get_param`
 - Buffer introspection: `num_buffers`, `buffer_name`, `buffer_size`, `get_buffer`, `set_buffer`
@@ -120,6 +120,30 @@ from dsp_graph import compile_graph, compile_graph_to_file
 
 code = compile_graph(graph)           # returns C++ string
 path = compile_graph_to_file(graph, "build/")  # writes build/{name}.cpp
+```
+
+## gen-dsp Integration
+
+dsp-graph graphs can be compiled into buildable audio plugin projects via [gen-dsp](https://github.com/your-repo/gen-dsp), which supports 11 platforms: ChucK, CLAP, AudioUnit, VST3, LV2, SuperCollider, VCV Rack, Daisy, and more.
+
+`compile_for_gen_dsp()` generates the three files needed to drop into any gen-dsp platform backend:
+
+```python
+from dsp_graph import compile_for_gen_dsp
+
+# Generates: test_synth.cpp, _ext_chuck.cpp, manifest.json
+compile_for_gen_dsp(graph, "build/", platform="chuck")
+```
+
+The adapter replaces gen-dsp's genlib-side code while reusing its platform-side code unchanged. The generated `manifest.json` is compatible with `gen_dsp.core.manifest.Manifest`.
+
+For a fully assembled project (requires gen-dsp installed):
+
+```python
+from dsp_graph.gen_dsp_adapter import assemble_project
+
+# Copies platform templates + generates adapter + manifest
+assemble_project(graph, "build/chuck_project", platform="chuck")
 ```
 
 ## Optimization
