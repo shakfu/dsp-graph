@@ -1105,3 +1105,178 @@ class TestGccCompilation:
             ],
         )
         self._compile_check(g)
+
+
+class TestLICM:
+    """Verify loop-invariant code motion."""
+
+    def test_param_derived_hoisted(self) -> None:
+        """A node that depends only on a param is hoisted before the loop."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            params=[Param(name="coeff", default=0.5)],
+            nodes=[
+                BinOp(id="inv", op="sub", a=1.0, b="coeff"),
+                BinOp(id="r", op="mul", a="in1", b="inv"),
+            ],
+        )
+        code = compile_graph(g)
+        inv_pos = code.index("float inv =")
+        loop_pos = code.index("for (int i")
+        assert inv_pos < loop_pos, "param-derived node should be hoisted before loop"
+
+    def test_input_dependent_in_loop(self) -> None:
+        """A node referencing an audio input stays inside the loop."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            params=[Param(name="gain", default=1.0)],
+            nodes=[
+                BinOp(id="r", op="mul", a="in1", b="gain"),
+            ],
+        )
+        code = compile_graph(g)
+        r_pos = code.index("float r =")
+        loop_pos = code.index("for (int i")
+        assert r_pos > loop_pos, "input-dependent node should be inside loop"
+
+    def test_constant_hoisted(self) -> None:
+        """A Constant node is hoisted before the loop."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            nodes=[
+                Constant(id="k", value=42.0),
+                BinOp(id="r", op="mul", a="in1", b="k"),
+            ],
+        )
+        code = compile_graph(g)
+        k_pos = code.index("float k =")
+        loop_pos = code.index("for (int i")
+        assert k_pos < loop_pos, "constant should be hoisted before loop"
+
+    def test_chain_hoisted(self) -> None:
+        """A chain of param-only nodes are all hoisted before the loop."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            params=[Param(name="freq", default=440.0)],
+            nodes=[
+                BinOp(id="a", op="div", a="freq", b=44100.0),
+                BinOp(id="b", op="mul", a="a", b=6.28),
+                BinOp(id="r", op="mul", a="in1", b="b"),
+            ],
+        )
+        code = compile_graph(g)
+        loop_pos = code.index("for (int i")
+        a_pos = code.index("float a =")
+        b_pos = code.index("float b =")
+        assert a_pos < loop_pos, "first chain node should be hoisted"
+        assert b_pos < loop_pos, "second chain node should be hoisted"
+
+    def test_stateful_never_hoisted(self) -> None:
+        """Stateful nodes always stay in the loop, even with literal args."""
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="p")],
+            nodes=[
+                Phasor(id="p", freq=440.0),
+            ],
+        )
+        code = compile_graph(g)
+        p_pos = code.index("float p =")
+        loop_pos = code.index("for (int i")
+        assert p_pos > loop_pos, "stateful node should stay in loop"
+
+    def test_mixed_graph(self) -> None:
+        """Some nodes hoisted, others remain in loop."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="result")],
+            params=[Param(name="coeff", default=0.5)],
+            nodes=[
+                BinOp(id="inv_coeff", op="sub", a=1.0, b="coeff"),
+                History(id="prev", init=0.0, input="result"),
+                BinOp(id="dry", op="mul", a="in1", b="inv_coeff"),
+                BinOp(id="wet", op="mul", a="prev", b="coeff"),
+                BinOp(id="result", op="add", a="dry", b="wet"),
+            ],
+        )
+        code = compile_graph(g)
+        loop_pos = code.index("for (int i")
+        # inv_coeff depends only on param -- hoisted
+        inv_pos = code.index("float inv_coeff =")
+        assert inv_pos < loop_pos
+        # dry depends on in1 -- in loop
+        dry_pos = code.index("float dry =")
+        assert dry_pos > loop_pos
+
+
+class TestSIMDHints:
+    """Verify SIMD vectorization hints in generated code."""
+
+    def test_restrict_on_io_pointers(self) -> None:
+        """I/O pointers use __restrict."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            nodes=[BinOp(id="r", op="mul", a="in1", b=1.0)],
+        )
+        code = compile_graph(g)
+        assert "float* __restrict in1" in code
+        assert "float* __restrict out1" in code
+
+    def test_vectorize_pragma_pure_graph(self) -> None:
+        """Vectorization pragma present when only pure nodes exist."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            nodes=[BinOp(id="r", op="mul", a="in1", b=2.0)],
+        )
+        code = compile_graph(g)
+        assert "#pragma clang loop vectorize(enable)" in code
+        assert "#pragma GCC ivdep" in code
+
+    def test_no_pragma_with_stateful(self) -> None:
+        """No vectorization pragma when stateful nodes exist."""
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="p")],
+            nodes=[Phasor(id="p", freq=440.0)],
+        )
+        code = compile_graph(g)
+        assert "#pragma clang loop" not in code
+        assert "#pragma GCC ivdep" not in code
+
+    @pytest.mark.skipif(not shutil.which("g++"), reason="g++ not available")
+    def test_compiles_with_restrict(self) -> None:
+        """Generated code with __restrict compiles successfully."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="r")],
+            params=[Param(name="gain", default=1.0)],
+            nodes=[
+                BinOp(id="inv", op="sub", a=1.0, b="gain"),
+                BinOp(id="r", op="mul", a="in1", b="inv"),
+            ],
+        )
+        code = compile_graph(g)
+        with tempfile.NamedTemporaryFile(suffix=".cpp", mode="w", delete=False) as f:
+            f.write(code)
+            f.flush()
+            result = subprocess.run(
+                ["g++", "-std=c++17", "-c", "-o", "/dev/null", "-x", "c++", f.name],
+                capture_output=True,
+                text=True,
+            )
+            Path(f.name).unlink()
+        assert result.returncode == 0, f"g++ failed:\n{result.stderr}"

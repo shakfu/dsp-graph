@@ -45,6 +45,7 @@ from dsp_graph.models import (
     UnaryOp,
     Wrap,
 )
+from dsp_graph.optimize import _STATEFUL_TYPES
 from dsp_graph.toposort import toposort
 from dsp_graph.validate import validate_graph
 
@@ -381,6 +382,49 @@ def _emit_state_reset(node: Node, w: _Writer) -> None:
 # ---------------------------------------------------------------------------
 
 
+_NON_REF_FIELDS = frozenset({"id", "op", "interp", "mode"})
+
+
+def _classify_loop_invariance(
+    sorted_nodes: list[Node],
+    input_ids: set[str],
+    param_names: set[str],
+) -> set[str]:
+    """Return the set of node IDs whose computations are loop-invariant.
+
+    A pure node is loop-invariant if ALL its Ref fields resolve (transitively)
+    to params, literal floats, or other invariant nodes -- never to audio inputs
+    or stateful nodes.
+    """
+    invariant_ids: set[str] = set()
+
+    for node in sorted_nodes:
+        if isinstance(node, _STATEFUL_TYPES):
+            continue
+
+        is_invariant = True
+        for field_name, value in node.__dict__.items():
+            if field_name in _NON_REF_FIELDS:
+                continue
+            if isinstance(value, float):
+                continue
+            if isinstance(value, str):
+                if value in input_ids:
+                    is_invariant = False
+                    break
+                if value in param_names:
+                    continue
+                if value in invariant_ids:
+                    continue
+                is_invariant = False
+                break
+
+        if is_invariant:
+            invariant_ids.add(node.id)
+
+    return invariant_ids
+
+
 def _emit_perform(
     graph: Graph,
     sorted_nodes: list[Node],
@@ -392,11 +436,11 @@ def _emit_perform(
 ) -> None:
     w(f"void {name}_perform({struct_name}* self, float** ins, float** outs, int n) {{")
 
-    # Unpack I/O pointers
+    # Unpack I/O pointers with __restrict
     for idx, inp in enumerate(graph.inputs):
-        w(f"    float* {inp.id} = ins[{idx}];")
+        w(f"    float* __restrict {inp.id} = ins[{idx}];")
     for idx, out in enumerate(graph.outputs):
-        w(f"    float* {out.id} = outs[{idx}];")
+        w(f"    float* __restrict {out.id} = outs[{idx}];")
 
     # Load params to locals
     for p in graph.params:
@@ -407,13 +451,48 @@ def _emit_perform(
         _emit_state_load(node, w)
 
     w("    float sr = self->sr;")
+
+    # Classify loop invariance
+    invariant_ids = _classify_loop_invariance(sorted_nodes, input_ids, param_names)
+
+    # Emit hoisted (loop-invariant) computations before the loop
+    hoisted_history: list[History] = []
+    hoisted_dw: list[DelayWrite] = []
+    for node in sorted_nodes:
+        if node.id in invariant_ids:
+            hoisted_lines: list[str] = []
+            _emit_node_compute(
+                node,
+                input_ids,
+                param_names,
+                hoisted_lines.append,
+                hoisted_history,
+                hoisted_dw,
+            )
+            for line in hoisted_lines:
+                # Strip 4 leading spaces: 8-space indent -> 4-space indent
+                if line.startswith("        "):
+                    w(line[4:])
+                else:
+                    w(line)
+
+    # Vectorization pragma -- only when no stateful nodes exist
+    has_stateful = any(isinstance(n, _STATEFUL_TYPES) for n in sorted_nodes)
+    if not has_stateful:
+        w("#if defined(__clang__)")
+        w("    #pragma clang loop vectorize(enable) interleave(enable)")
+        w("#elif defined(__GNUC__)")
+        w("    #pragma GCC ivdep")
+        w("#endif")
+
     w("    for (int i = 0; i < n; i++) {")
 
-    # Topo-sorted node computations
+    # Topo-sorted node computations (variant nodes only)
     history_nodes: list[History] = []
     delay_write_nodes: list[DelayWrite] = []
     for node in sorted_nodes:
-        _emit_node_compute(node, input_ids, param_names, w, history_nodes, delay_write_nodes)
+        if node.id not in invariant_ids:
+            _emit_node_compute(node, input_ids, param_names, w, history_nodes, delay_write_nodes)
 
     # History write-backs
     for h in history_nodes:

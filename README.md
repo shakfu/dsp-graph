@@ -149,13 +149,16 @@ assemble_project(graph, "build/chuck_project", platform="chuck")
 ## Optimization
 
 ```python
-from dsp_graph import optimize_graph, constant_fold, eliminate_dead_nodes
+from dsp_graph import optimize_graph, constant_fold, eliminate_cse, eliminate_dead_nodes
 
-optimized = optimize_graph(graph)  # constant folding + dead node elimination
+optimized = optimize_graph(graph)  # constant folding + CSE + dead node elimination
 ```
 
 - **Constant folding**: pure nodes with all-constant inputs are replaced by `Constant` nodes
+- **Common subexpression elimination**: duplicate pure nodes with identical inputs are merged
 - **Dead node elimination**: nodes not reachable from any output are removed (respects side-effecting writers for delay lines and buffers)
+- **Loop-invariant code motion**: param-only expressions are hoisted before the sample loop
+- **SIMD hints**: `__restrict` on I/O pointers; vectorization pragmas for pure-only graphs
 
 ## Validation
 

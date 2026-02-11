@@ -88,16 +88,17 @@
 
 ### v0.5 -- gen-dsp Integration
 
-- [ ] Thin C++ adapter: gen-dsp `_ext.h` interface wrapping dsp-graph `create/destroy/perform`
-- [ ] Generate adapter alongside `.cpp` so dsp-graph outputs drop into gen-dsp platform backends
-- [ ] Shared param introspection (gen-dsp parser reads dsp-graph param API)
-- [ ] Integration tests: dsp-graph -> gen-dsp -> ChucK/CLAP/AU build
+- [x] Thin C++ adapter: gen-dsp `_ext.h` interface wrapping dsp-graph `create/destroy/reset/perform`
+- [x] Generate adapter alongside `.cpp` so dsp-graph outputs drop into gen-dsp platform backends
+- [x] Shared param introspection (manifest.json, compatible with `gen_dsp.core.manifest.Manifest`)
+- [x] Integration tests: dsp-graph -> gen-dsp -> ChucK/CLAP/AU g++ compilation
+- [x] `{name}_reset()` function: reinitialize all state without reallocating
 
 ### v0.6 -- Advanced Compiler Optimizations
 
-- [ ] Common subexpression elimination
-- [ ] Loop-invariant code motion (hoist param-only expressions out of sample loop)
-- [ ] SIMD vectorization hints (mark inner loop as vectorizable)
+- [x] Common subexpression elimination
+- [x] Loop-invariant code motion (hoist param-only expressions out of sample loop)
+- [x] SIMD vectorization hints (mark inner loop as vectorizable)
 
 ### Future
 

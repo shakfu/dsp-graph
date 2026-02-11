@@ -46,12 +46,12 @@ from dsp_graph.models import (
     UnaryOp,
     Wrap,
 )
-from dsp_graph.optimize import constant_fold, eliminate_dead_nodes, optimize_graph
+from dsp_graph.optimize import constant_fold, eliminate_cse, eliminate_dead_nodes, optimize_graph
 from dsp_graph.toposort import toposort
 from dsp_graph.validate import validate_graph
 from dsp_graph.visualize import graph_to_dot, graph_to_dot_file
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "Accum",
@@ -98,6 +98,7 @@ __all__ = [
     "compile_graph",
     "compile_graph_to_file",
     "constant_fold",
+    "eliminate_cse",
     "eliminate_dead_nodes",
     "generate_adapter_cpp",
     "generate_manifest",

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0
+
+### Compiler optimizations
+
+- New `eliminate_cse()` optimization pass: graph-level common subexpression elimination merges duplicate pure nodes (same type, op, and resolved refs) and rewrites all references to the canonical node. Commutative ops (`add`, `mul`, `min`, `max`) are detected regardless of operand order. Stateful nodes are never merged. Integrated into `optimize_graph()` between constant folding and dead node elimination.
+- Loop-invariant code motion (LICM): pure nodes whose inputs are all params, literals, or other invariant nodes are hoisted before the `for` loop, reducing per-sample overhead.
+- SIMD vectorization hints: I/O buffer pointers are now declared `float* __restrict` to inform the compiler they don't alias. For pure-only graphs (no stateful nodes), a `#pragma clang loop vectorize(enable)` / `#pragma GCC ivdep` is emitted before the sample loop.
+
+### Other
+
+- Version bumped to 0.6.0
+
 ## 0.5.0
 
 ### gen-dsp integration

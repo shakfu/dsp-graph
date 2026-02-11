@@ -44,6 +44,7 @@ from dsp_graph import (
     UnaryOp,
     Wrap,
     constant_fold,
+    eliminate_cse,
     eliminate_dead_nodes,
     optimize_graph,
 )
@@ -553,3 +554,165 @@ class TestOptimizeGraph:
         result = optimize_graph(g)
         r = {n.id: n for n in result.nodes}["r"]
         assert isinstance(r, BinOp)
+
+
+# ---------------------------------------------------------------------------
+# Common Subexpression Elimination
+# ---------------------------------------------------------------------------
+
+
+class TestCSE:
+    def test_identical_binops_collapsed(self) -> None:
+        """Two identical BinOp(add, x, 1.0) -> one remains."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[
+                AudioOutput(id="out1", source="a"),
+                AudioOutput(id="out2", source="b"),
+            ],
+            nodes=[
+                BinOp(id="a", op="add", a="in1", b=1.0),
+                BinOp(id="b", op="add", a="in1", b=1.0),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert "a" in ids
+        assert "b" not in ids
+        # out2 should now reference "a"
+        out2 = {o.id: o for o in result.outputs}["out2"]
+        assert out2.source == "a"
+
+    def test_commutative_detected(self) -> None:
+        """add(a, b) == add(b, a) for commutative ops."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1"), AudioInput(id="in2")],
+            outputs=[
+                AudioOutput(id="out1", source="a"),
+                AudioOutput(id="out2", source="b"),
+            ],
+            nodes=[
+                BinOp(id="a", op="add", a="in1", b="in2"),
+                BinOp(id="b", op="add", a="in2", b="in1"),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert len(ids) == 1
+
+    def test_noncommutative_preserved(self) -> None:
+        """sub(a, b) != sub(b, a) for non-commutative ops."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1"), AudioInput(id="in2")],
+            outputs=[
+                AudioOutput(id="out1", source="a"),
+                AudioOutput(id="out2", source="b"),
+            ],
+            nodes=[
+                BinOp(id="a", op="sub", a="in1", b="in2"),
+                BinOp(id="b", op="sub", a="in2", b="in1"),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert len(ids) == 2
+
+    def test_stateful_never_cse(self) -> None:
+        """Two identical Phasors remain distinct (stateful)."""
+        g = Graph(
+            name="test",
+            outputs=[
+                AudioOutput(id="out1", source="a"),
+                AudioOutput(id="out2", source="b"),
+            ],
+            nodes=[
+                Phasor(id="a", freq=440.0),
+                Phasor(id="b", freq=440.0),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert ids == {"a", "b"}
+
+    def test_transitive_rewrite(self) -> None:
+        """B refs A, A is dup of A' -> B refs A'."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="c")],
+            nodes=[
+                BinOp(id="a1", op="add", a="in1", b=1.0),
+                BinOp(id="a2", op="add", a="in1", b=1.0),
+                # c references a2, which is a duplicate of a1
+                BinOp(id="c", op="mul", a="a2", b=2.0),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert "a2" not in ids
+        c = {n.id: n for n in result.nodes}["c"]
+        assert isinstance(c, BinOp)
+        assert c.a == "a1"
+
+    def test_constants_merged(self) -> None:
+        """Two Constant(value=3.14) -> one."""
+        g = Graph(
+            name="test",
+            outputs=[
+                AudioOutput(id="out1", source="a"),
+                AudioOutput(id="out2", source="b"),
+            ],
+            nodes=[
+                Constant(id="a", value=3.14),
+                Constant(id="b", value=3.14),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert len(ids) == 1
+
+    def test_multifield_nodes(self) -> None:
+        """Identical Clamp and Mix nodes are merged."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[
+                AudioOutput(id="out1", source="c1"),
+                AudioOutput(id="out2", source="c2"),
+                AudioOutput(id="out3", source="m1"),
+                AudioOutput(id="out4", source="m2"),
+            ],
+            nodes=[
+                Clamp(id="c1", a="in1", lo=0.0, hi=1.0),
+                Clamp(id="c2", a="in1", lo=0.0, hi=1.0),
+                Mix(id="m1", a="in1", b=1.0, t=0.5),
+                Mix(id="m2", a="in1", b=1.0, t=0.5),
+            ],
+        )
+        result = eliminate_cse(g)
+        ids = {n.id for n in result.nodes}
+        assert "c2" not in ids
+        assert "m2" not in ids
+
+    def test_cse_in_optimize_graph(self) -> None:
+        """End-to-end: CSE runs as part of optimize_graph()."""
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[
+                AudioOutput(id="out1", source="a"),
+                AudioOutput(id="out2", source="b"),
+            ],
+            params=[Param(name="gain")],
+            nodes=[
+                BinOp(id="a", op="mul", a="in1", b="gain"),
+                BinOp(id="b", op="mul", a="in1", b="gain"),
+            ],
+        )
+        result = optimize_graph(g)
+        ids = {n.id for n in result.nodes}
+        # One of a/b should be eliminated
+        assert len(ids) == 1

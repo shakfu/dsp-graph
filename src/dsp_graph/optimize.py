@@ -283,8 +283,111 @@ def eliminate_dead_nodes(graph: Graph) -> Graph:
     return graph.model_copy(update={"nodes": new_nodes})
 
 
+_COMMUTATIVE_OPS = frozenset({"add", "mul", "min", "max"})
+
+_NON_REF_FIELDS = frozenset({"id", "op", "interp", "mode"})
+
+
+def _operand_key(ref: Union[str, float]) -> tuple[int, Union[str, float]]:
+    """Sort key for commutative operand canonicalization."""
+    if isinstance(ref, float):
+        return (0, ref)
+    return (1, ref)
+
+
+def _cse_key(node: Node, rewrite: dict[str, str]) -> tuple[Union[str, float], ...] | None:
+    """Compute a hashable expression key for a pure node, or None if not eligible.
+
+    Ref fields are resolved through *rewrite* first so that transitive CSE works.
+    """
+    if isinstance(node, _STATEFUL_TYPES):
+        return None
+
+    def r(v: Union[str, float]) -> Union[str, float]:
+        if isinstance(v, str):
+            return rewrite.get(v, v)
+        return v
+
+    if isinstance(node, BinOp):
+        a, b = r(node.a), r(node.b)
+        if node.op in _COMMUTATIVE_OPS:
+            a, b = sorted([a, b], key=_operand_key)
+        return ("binop", node.op, a, b)
+    if isinstance(node, UnaryOp):
+        return ("unaryop", node.op, r(node.a))
+    if isinstance(node, Constant):
+        return ("constant", node.value)
+    if isinstance(node, Compare):
+        return ("compare", node.op, r(node.a), r(node.b))
+    if isinstance(node, Select):
+        return ("select", r(node.cond), r(node.a), r(node.b))
+    if isinstance(node, Clamp):
+        return ("clamp", r(node.a), r(node.lo), r(node.hi))
+    if isinstance(node, Wrap):
+        return ("wrap", r(node.a), r(node.lo), r(node.hi))
+    if isinstance(node, Fold):
+        return ("fold", r(node.a), r(node.lo), r(node.hi))
+    if isinstance(node, Mix):
+        return ("mix", r(node.a), r(node.b), r(node.t))
+    return None
+
+
+def _rewrite_refs(node: Node, rewrite: dict[str, str]) -> Node:
+    """Return a copy of *node* with string ref fields remapped through *rewrite*."""
+    updates: dict[str, str] = {}
+    for field_name, value in node.__dict__.items():
+        if field_name in _NON_REF_FIELDS:
+            continue
+        if isinstance(value, str) and value in rewrite:
+            updates[field_name] = rewrite[value]
+    if not updates:
+        return node
+    return node.model_copy(update=updates)
+
+
+def eliminate_cse(graph: Graph) -> Graph:
+    """Eliminate common subexpressions from the graph.
+
+    Two pure nodes with identical (type, op, resolved ref fields) are
+    duplicates -- the later one is removed and all references rewritten
+    to point to the earlier (canonical) one.
+    """
+    from dsp_graph.toposort import toposort
+
+    sorted_nodes = toposort(graph)
+    rewrite: dict[str, str] = {}
+    seen: dict[tuple[Union[str, float], ...], str] = {}
+
+    for node in sorted_nodes:
+        key = _cse_key(node, rewrite)
+        if key is not None and key in seen:
+            rewrite[node.id] = seen[key]
+        elif key is not None:
+            seen[key] = node.id
+
+    if not rewrite:
+        return graph
+
+    new_nodes = []
+    for node in graph.nodes:
+        if node.id in rewrite:
+            continue
+        new_nodes.append(_rewrite_refs(node, rewrite))
+
+    new_outputs = []
+    for out in graph.outputs:
+        source = rewrite.get(out.source, out.source)
+        if source != out.source:
+            new_outputs.append(out.model_copy(update={"source": source}))
+        else:
+            new_outputs.append(out)
+
+    return graph.model_copy(update={"nodes": new_nodes, "outputs": new_outputs})
+
+
 def optimize_graph(graph: Graph) -> Graph:
-    """Apply all optimization passes: constant folding, then dead node elimination."""
+    """Apply all optimization passes: constant folding, CSE, then dead node elimination."""
     result = constant_fold(graph)
+    result = eliminate_cse(result)
     result = eliminate_dead_nodes(result)
     return result
