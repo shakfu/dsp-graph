@@ -4,7 +4,7 @@ A sketch of how Pydantic models could define a DSP graph that serializes to JSON
 
 ## Architecture
 
-```
+```text
 Python (Pydantic models)  -->  JSON (intermediate)  -->  C++ (compiled output)
       build graph              .model_dump_json()         codegen pass
 ```

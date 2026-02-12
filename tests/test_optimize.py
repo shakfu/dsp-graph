@@ -33,6 +33,7 @@ from dsp_graph import (
     Mix,
     Noise,
     OnePole,
+    OptimizeStats,
     Param,
     Peek,
     Phasor,
@@ -51,6 +52,7 @@ from dsp_graph import (
     eliminate_cse,
     eliminate_dead_nodes,
     optimize_graph,
+    promote_control_rate,
 )
 
 # ---------------------------------------------------------------------------
@@ -456,7 +458,7 @@ class TestOptimizeGraph:
                 Constant(id="dead", value=999.0),
             ],
         )
-        result = optimize_graph(g)
+        result, stats = optimize_graph(g)
         ids = {n.id for n in result.nodes}
         # ratio should be folded into a constant
         r_ratio = {n.id: n for n in result.nodes}.get("ratio")
@@ -467,11 +469,16 @@ class TestOptimizeGraph:
         # sr and k are now dead too (ratio is a constant, doesn't reference them)
         assert "sr" not in ids
         assert "k" not in ids
+        # stats: 1 fold (ratio), 0 CSE, 3 dead (sr, k, dead)
+        assert stats.constants_folded == 1
+        assert stats.cse_merges == 0
+        assert stats.dead_nodes_removed == 3
 
     def test_empty_graph(self) -> None:
         g = Graph(name="empty")
-        result = optimize_graph(g)
+        result, stats = optimize_graph(g)
         assert result.nodes == []
+        assert stats == OptimizeStats(0, 0, 0, 0)
 
     def test_v04_buffer_stateful_never_folded(self) -> None:
         """All v0.4 buffer-related stateful nodes are never constant-folded."""
@@ -555,7 +562,7 @@ class TestOptimizeGraph:
                 BinOp(id="r", op="mul", a="in1", b="gain"),
             ],
         )
-        result = optimize_graph(g)
+        result, _stats = optimize_graph(g)
         r = {n.id: n for n in result.nodes}["r"]
         assert isinstance(r, BinOp)
 
@@ -849,10 +856,48 @@ class TestCSE:
                 BinOp(id="b", op="mul", a="in1", b="gain"),
             ],
         )
-        result = optimize_graph(g)
+        result, stats = optimize_graph(g)
         ids = {n.id for n in result.nodes}
         # One of a/b should be eliminated
         assert len(ids) == 1
+        assert stats.cse_merges == 1
+
+    def test_cse_orphaned_deps_eliminated(self) -> None:
+        """Second dead-node pass removes nodes orphaned by CSE.
+
+        Graph: helper1 feeds dup1, helper2 feeds dup2.
+        dup1 and dup2 are identical (both read in1 * 2.0).
+        CSE removes dup2 and rewires result to dup1.
+        First dead-node pass runs before CSE, so helper2 was live.
+        After CSE, helper2 is only referenced by the now-removed dup2.
+        The second dead-node pass catches helper2.
+        """
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="result")],
+            nodes=[
+                # helper1 and helper2 both compute in1 * 2.0
+                BinOp(id="helper1", op="mul", a="in1", b=2.0),
+                BinOp(id="helper2", op="mul", a="in1", b=2.0),
+                # dup1 uses helper1, dup2 uses helper2 -- but both
+                # resolve to the same CSE key after helper2 -> helper1 rewrite
+                UnaryOp(id="dup1", op="abs", a="helper1"),
+                UnaryOp(id="dup2", op="abs", a="helper2"),
+                # result only uses dup2, which CSE rewrites to dup1
+                BinOp(id="result", op="add", a="dup2", b=1.0),
+            ],
+        )
+        result, stats = optimize_graph(g)
+        ids = {n.id for n in result.nodes}
+        # CSE merges helper2->helper1 and dup2->dup1
+        assert "helper2" not in ids, "helper2 should be eliminated by second dead-node pass"
+        assert "dup2" not in ids, "dup2 should be eliminated by CSE"
+        # Core chain preserved
+        assert "helper1" in ids
+        assert "dup1" in ids
+        assert "result" in ids
+        assert stats.cse_merges == 2  # helper2->helper1, dup2->dup1
 
     def test_scale_cse(self) -> None:
         """Identical Scale nodes are merged."""
@@ -955,3 +1000,154 @@ class TestNewStatefulNeverFolded:
         folded = constant_fold(g)
         r = {n.id: n for n in folded.nodes}["pk"]
         assert isinstance(r, Peek)
+
+
+# ---------------------------------------------------------------------------
+# Control-rate promotion
+# ---------------------------------------------------------------------------
+
+
+class TestPromoteControlRate:
+    def test_basic_promotion(self) -> None:
+        """Pure node depending on a control-rate node is promoted."""
+        g = Graph(
+            name="test",
+            sample_rate=48000.0,
+            control_interval=64,
+            control_nodes=["smoother"],
+            inputs=[AudioInput(id="in0")],
+            outputs=[AudioOutput(id="out0", source="result")],
+            params=[Param(name="vol")],
+            nodes=[
+                SmoothParam(id="smoother", a="vol", coeff=0.9),
+                BinOp(id="inv_vol", op="sub", a=1.0, b="smoother"),
+                BinOp(id="result", op="mul", a="in0", b="inv_vol"),
+            ],
+        )
+        result = promote_control_rate(g)
+        assert "inv_vol" in result.control_nodes
+        # result depends on audio input, should NOT be promoted
+        assert "result" not in result.control_nodes
+
+    def test_transitive_promotion(self) -> None:
+        """Chain of promotable nodes: A->B->C all promoted."""
+        g = Graph(
+            name="test",
+            sample_rate=48000.0,
+            control_interval=64,
+            control_nodes=["smoother"],
+            inputs=[AudioInput(id="in0")],
+            outputs=[AudioOutput(id="out0", source="result")],
+            params=[Param(name="vol")],
+            nodes=[
+                SmoothParam(id="smoother", a="vol", coeff=0.9),
+                BinOp(id="step1", op="sub", a=1.0, b="smoother"),
+                UnaryOp(id="step2", op="abs", a="step1"),
+                BinOp(id="result", op="mul", a="in0", b="step2"),
+            ],
+        )
+        result = promote_control_rate(g)
+        assert "step1" in result.control_nodes
+        assert "step2" in result.control_nodes
+        assert "result" not in result.control_nodes
+
+    def test_stateful_never_promoted(self) -> None:
+        """Stateful nodes are never promoted even if deps are control-rate."""
+        g = Graph(
+            name="test",
+            sample_rate=48000.0,
+            control_interval=64,
+            control_nodes=["ctrl_const"],
+            inputs=[],
+            outputs=[AudioOutput(id="out0", source="osc")],
+            params=[Param(name="freq")],
+            nodes=[
+                BinOp(id="ctrl_const", op="mul", a="freq", b=0.5),
+                Phasor(id="osc", freq="ctrl_const"),
+            ],
+        )
+        result = promote_control_rate(g)
+        assert "osc" not in result.control_nodes
+
+    def test_invariant_not_promoted(self) -> None:
+        """Invariant nodes stay in LICM tier, not downgraded to control-rate."""
+        g = Graph(
+            name="test",
+            sample_rate=48000.0,
+            control_interval=64,
+            control_nodes=["smoother"],
+            inputs=[AudioInput(id="in0")],
+            outputs=[AudioOutput(id="out0", source="result")],
+            params=[Param(name="a"), Param(name="b")],
+            nodes=[
+                SmoothParam(id="smoother", a="a", coeff=0.9),
+                BinOp(id="inv", op="add", a="a", b="b"),  # depends only on params
+                BinOp(id="result", op="mul", a="in0", b="inv"),
+            ],
+        )
+        result = promote_control_rate(g)
+        # inv depends only on params -> invariant, should NOT be promoted
+        assert "inv" not in result.control_nodes
+
+    def test_noop_when_control_interval_zero(self) -> None:
+        """No promotion when control_interval=0."""
+        g = Graph(
+            name="test",
+            control_interval=0,
+            control_nodes=[],
+            outputs=[AudioOutput(id="out0", source="x")],
+            nodes=[BinOp(id="x", op="add", a=1.0, b=2.0)],
+        )
+        result = promote_control_rate(g)
+        assert result.control_nodes == []
+
+    def test_noop_when_control_nodes_empty(self) -> None:
+        """No promotion when control_nodes is empty (even with interval>0)."""
+        g = Graph(
+            name="test",
+            control_interval=64,
+            control_nodes=[],
+            outputs=[AudioOutput(id="out0", source="x")],
+            nodes=[BinOp(id="x", op="add", a=1.0, b=2.0)],
+        )
+        result = promote_control_rate(g)
+        assert result.control_nodes == []
+
+    def test_depends_on_invariant_and_control(self) -> None:
+        """Node depending on both invariant and control-rate is still promotable."""
+        g = Graph(
+            name="test",
+            sample_rate=48000.0,
+            control_interval=64,
+            control_nodes=["smoother"],
+            inputs=[AudioInput(id="in0")],
+            outputs=[AudioOutput(id="out0", source="result")],
+            params=[Param(name="vol"), Param(name="scale")],
+            nodes=[
+                SmoothParam(id="smoother", a="vol", coeff=0.9),
+                # mix_node depends on param (invariant dep) and smoother (control-rate)
+                BinOp(id="mix_node", op="mul", a="scale", b="smoother"),
+                BinOp(id="result", op="mul", a="in0", b="mix_node"),
+            ],
+        )
+        result = promote_control_rate(g)
+        assert "mix_node" in result.control_nodes
+
+    def test_stats_via_optimize_graph(self) -> None:
+        """optimize_graph reports promoted count in stats."""
+        g = Graph(
+            name="test",
+            sample_rate=48000.0,
+            control_interval=64,
+            control_nodes=["smoother"],
+            inputs=[AudioInput(id="in0")],
+            outputs=[AudioOutput(id="out0", source="result")],
+            params=[Param(name="vol")],
+            nodes=[
+                SmoothParam(id="smoother", a="vol", coeff=0.9),
+                BinOp(id="inv_vol", op="sub", a=1.0, b="smoother"),
+                BinOp(id="result", op="mul", a="in0", b="inv_vol"),
+            ],
+        )
+        _, stats = optimize_graph(g)
+        assert stats.control_rate_promoted == 1

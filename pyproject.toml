@@ -35,7 +35,7 @@ sim = ["numpy>=1.24"]
 
 [dependency-groups]
 dev = [
-    "gen-dsp>=0.1.6",
+    "gen-dsp>=0.1.8",
     "mypy>=1.19.1",
     "numpy>=1.24",
     "pytest>=9.0.2",

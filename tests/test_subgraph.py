@@ -298,7 +298,7 @@ class TestPipelineIntegration:
                 Subgraph(id="filt", graph=inner, inputs={"sig": "in1"}),
             ],
         )
-        optimized = optimize_graph(graph)
+        optimized, _stats = optimize_graph(graph)
         assert not any(isinstance(n, Subgraph) for n in optimized.nodes)
 
 
@@ -455,3 +455,67 @@ class TestSubgraphErrors:
                     nodes=[Subgraph(id="sg", graph=inner, inputs={"x": 0.0})],
                 )
             )
+
+
+# ---------------------------------------------------------------------------
+# Param namespace collision detection
+# ---------------------------------------------------------------------------
+
+
+class TestParamNamespaceCollision:
+    def test_collision_with_parent_param(self) -> None:
+        """Expanded node ID collides with a parent param name."""
+        inner = Graph(
+            name="inner",
+            inputs=[AudioInput(id="sig")],
+            outputs=[AudioOutput(id="y", source="lpf")],
+            nodes=[OnePole(id="lpf", a="sig", coeff=0.5)],
+        )
+        # Subgraph id="my" + inner node "lpf" -> "my__lpf"
+        # Parent param named "my__lpf" -> collision
+        with pytest.raises(ValueError, match="collides with parent param"):
+            expand_subgraphs(
+                Graph(
+                    name="t",
+                    inputs=[AudioInput(id="in1")],
+                    outputs=[AudioOutput(id="o", source="my")],
+                    params=[Param(name="my__lpf", default=0.0)],
+                    nodes=[Subgraph(id="my", graph=inner, inputs={"sig": "in1"})],
+                )
+            )
+
+    def test_collision_with_parent_input(self) -> None:
+        """Expanded node ID collides with a parent audio input ID."""
+        inner = Graph(
+            name="inner",
+            inputs=[AudioInput(id="sig")],
+            outputs=[AudioOutput(id="y", source="lpf")],
+            nodes=[OnePole(id="lpf", a="sig", coeff=0.5)],
+        )
+        with pytest.raises(ValueError, match="collides with parent input"):
+            expand_subgraphs(
+                Graph(
+                    name="t",
+                    inputs=[AudioInput(id="my__lpf")],
+                    outputs=[AudioOutput(id="o", source="my")],
+                    nodes=[Subgraph(id="my", graph=inner, inputs={"sig": "my__lpf"})],
+                )
+            )
+
+    def test_no_collision_normal_case(self) -> None:
+        """Normal expansion should not trigger collision errors."""
+        inner = Graph(
+            name="inner",
+            inputs=[AudioInput(id="sig")],
+            outputs=[AudioOutput(id="y", source="lpf")],
+            nodes=[OnePole(id="lpf", a="sig", coeff=0.5)],
+        )
+        graph = Graph(
+            name="t",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="o", source="sub")],
+            params=[Param(name="gain", default=1.0)],
+            nodes=[Subgraph(id="sub", graph=inner, inputs={"sig": "in1"})],
+        )
+        expanded = expand_subgraphs(graph)
+        assert "sub__lpf" in {n.id for n in expanded.nodes}

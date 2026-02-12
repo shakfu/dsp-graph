@@ -126,7 +126,7 @@ void perform(State* self, float** ins, float** outs, int n) {
 
 Signal flow:
 
-```
+```text
 in --+--> [delay] --+--> out
      ^              |
      |   feedback   |

@@ -192,14 +192,17 @@ def _validate_binary(binary: Path, platform: str) -> list[str]:
     try:
         result = subprocess.run(
             ["file", str(binary)],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         file_type = result.stdout.strip()
         if IS_MACOS:
             if "Mach-O" not in file_type:
                 errors.append(f"not a Mach-O binary: {file_type}")
-            elif ("dynamically linked shared library" not in file_type
-                  and "bundle" not in file_type):
+            elif (
+                "dynamically linked shared library" not in file_type and "bundle" not in file_type
+            ):
                 errors.append(f"not a shared library/bundle: {file_type}")
         elif IS_LINUX:
             if "ELF" not in file_type:
@@ -220,7 +223,9 @@ def _validate_binary(binary: Path, platform: str) -> list[str]:
             nm_flags = ["-g", "--defined-only"] if IS_LINUX else ["-g"]
             result = subprocess.run(
                 ["nm", *nm_flags, str(binary)],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if expected_sym not in result.stdout:
                 errors.append(f"missing entry symbol '{expected_sym}'")
@@ -248,9 +253,10 @@ def _validate_vst3(output_file: Path, project_dir: Path) -> tuple[list[str], lis
     if moduleinfotool.is_file():
         try:
             result = subprocess.run(
-                [str(moduleinfotool), "-create", "-version", "1.0.0",
-                 "-path", str(output_file)],
-                capture_output=True, text=True, timeout=15,
+                [str(moduleinfotool), "-create", "-version", "1.0.0", "-path", str(output_file)],
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
             if result.returncode != 0:
                 errors.append(f"moduleinfotool failed (rc={result.returncode})")
@@ -263,9 +269,11 @@ def _validate_vst3(output_file: Path, project_dir: Path) -> tuple[list[str], lis
                     errors.append("moduleinfotool: no VST3 classes found")
                 else:
                     cls = classes[0]
-                    info.append(f"moduleinfo: {cls.get('Name')} "
-                                f"[{', '.join(cls.get('Sub Categories', []))}] "
-                                f"SDK {cls.get('SDKVersion')}")
+                    info.append(
+                        f"moduleinfo: {cls.get('Name')} "
+                        f"[{', '.join(cls.get('Sub Categories', []))}] "
+                        f"SDK {cls.get('SDKVersion')}"
+                    )
         except json.JSONDecodeError:
             errors.append("moduleinfotool: invalid JSON output")
         except Exception as exc:
@@ -276,7 +284,9 @@ def _validate_vst3(output_file: Path, project_dir: Path) -> tuple[list[str], lis
         try:
             result = subprocess.run(
                 [str(validator), str(output_file)],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
             output = result.stdout + result.stderr
             # Parse "Result: N tests passed, M tests failed"
@@ -350,8 +360,10 @@ def _generate_and_build(validate: bool = False) -> int:
         if validate and result.output_file:
             binary = _find_binary(result.output_file)
             if binary is None:
-                print(f"  FAIL {module_name} -> {platform} (validate): "
-                      f"cannot locate binary in {result.output_file}")
+                print(
+                    f"  FAIL {module_name} -> {platform} (validate): "
+                    f"cannot locate binary in {result.output_file}"
+                )
                 errors += 1
                 continue
 
@@ -366,8 +378,7 @@ def _generate_and_build(validate: bool = False) -> int:
             # VST3-specific: run SDK moduleinfotool + validator
             vst3_info: list[str] = []
             if platform == "vst3":
-                vst3_errors, vst3_info = _validate_vst3(
-                    result.output_file, out_dir)
+                vst3_errors, vst3_info = _validate_vst3(result.output_file, out_dir)
                 if vst3_errors:
                     print(f"  FAIL {module_name} -> {platform} (vst3 validate):")
                     for e in vst3_errors:
@@ -377,8 +388,7 @@ def _generate_and_build(validate: bool = False) -> int:
 
             size_str = f"{binary.stat().st_size:,} bytes"
             extra = f"  [{'; '.join(vst3_info)}]" if vst3_info else ""
-            print(f"  OK   {module_name} -> {platform}  {binary.name} "
-                  f"({size_str}){extra}")
+            print(f"  OK   {module_name} -> {platform}  {binary.name} ({size_str}){extra}")
         else:
             output = result.output_file or "unknown"
             print(f"  OK   {module_name} -> {platform}  ({output})")

@@ -18,6 +18,7 @@ from dsp_graph import (
     Subgraph,
     compile_graph,
     expand_subgraphs,
+    optimize_graph,
     validate_graph,
 )
 from dsp_graph.simulate import simulate
@@ -799,3 +800,63 @@ class TestEdgeCases:
         np.testing.assert_allclose(out[0:4], 0.5, atol=1e-7)
         # Block 1 (samples 4-6): value = 0.75
         np.testing.assert_allclose(out[4:7], 0.75, atol=1e-7)
+
+
+# ===========================================================================
+# F. Control-Rate Promotion Integration (~2 tests)
+# ===========================================================================
+
+
+class TestControlRatePromotion:
+    def test_promoted_node_staircase_in_simulation(self):
+        """Auto-promoted control-rate node produces staircase output."""
+        g = Graph(
+            name="test",
+            sample_rate=48000.0,
+            control_interval=4,
+            control_nodes=["smoother"],
+            inputs=[],
+            outputs=[AudioOutput(id="out0", source="inv_vol")],
+            params=[Param(name="vol", default=1.0)],
+            nodes=[
+                SmoothParam(id="smoother", a="vol", coeff=0.5),
+                BinOp(id="inv_vol", op="sub", a=1.0, b="smoother"),
+            ],
+        )
+        opt_graph, stats = optimize_graph(g)
+        assert "inv_vol" in opt_graph.control_nodes
+        assert stats.control_rate_promoted == 1
+
+        # Simulate -- promoted node should produce staircase (held per block)
+        sim_result = simulate(opt_graph, n_samples=8)
+        out = sim_result.outputs["out0"]
+        # Block 0 (samples 0-3): smoother=0.5, inv_vol=1-0.5=0.5
+        # Block 1 (samples 4-7): smoother=0.75, inv_vol=1-0.75=0.25
+        np.testing.assert_allclose(out[0:4], 0.5, atol=1e-7)
+        np.testing.assert_allclose(out[4:8], 0.25, atol=1e-7)
+
+    def test_promoted_node_in_control_rate_codegen(self):
+        """Auto-promoted node appears in control-rate section of compiled C++."""
+        g = Graph(
+            name="test",
+            sample_rate=48000.0,
+            control_interval=64,
+            control_nodes=["smoother"],
+            inputs=[AudioInput(id="in0")],
+            outputs=[AudioOutput(id="out0", source="result")],
+            params=[Param(name="vol")],
+            nodes=[
+                SmoothParam(id="smoother", a="vol", coeff=0.9),
+                BinOp(id="inv_vol", op="sub", a=1.0, b="smoother"),
+                BinOp(id="result", op="mul", a="in0", b="inv_vol"),
+            ],
+        )
+        opt_graph, _ = optimize_graph(g)
+        assert "inv_vol" in opt_graph.control_nodes
+
+        code = compile_graph(opt_graph)
+        outer_pos = code.index("for (int _cb = 0;")
+        inner_pos = code.index("for (int i = _cb;")
+        inv_vol_pos = code.index("float inv_vol =")
+        # inv_vol should be emitted between outer and inner loops (control-rate)
+        assert outer_pos < inv_vol_pos < inner_pos

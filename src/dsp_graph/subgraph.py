@@ -22,9 +22,26 @@ def expand_subgraphs(graph: Graph) -> Graph:
     # Collect prefixed control_nodes from inner subgraphs
     new_control_nodes: list[str] = list(graph.control_nodes)
 
+    # Parent namespace sets for collision detection
+    parent_param_names = {p.name for p in graph.params}
+    parent_input_ids = {inp.id for inp in graph.inputs}
+
     for node in graph.nodes:
         if isinstance(node, Subgraph):
+            pre_count = len(out_nodes)
             _expand_one(node, out_nodes, output_map)
+            # Check for namespace collisions with parent params/inputs
+            for new_node in out_nodes[pre_count:]:
+                if new_node.id in parent_param_names:
+                    raise ValueError(
+                        f"Subgraph '{node.id}': expanded node '{new_node.id}' "
+                        f"collides with parent param"
+                    )
+                if new_node.id in parent_input_ids:
+                    raise ValueError(
+                        f"Subgraph '{node.id}': expanded node '{new_node.id}' "
+                        f"collides with parent input"
+                    )
             # Propagate inner graph's control_nodes with prefix
             inner = expand_subgraphs(node.graph)
             prefix = node.id + "__"

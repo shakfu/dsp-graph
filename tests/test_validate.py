@@ -13,8 +13,11 @@ from dsp_graph import (
     DelayRead,
     DelayWrite,
     Graph,
+    GraphValidationError,
     History,
+    OnePole,
     Param,
+    Subgraph,
     validate_graph,
 )
 
@@ -253,3 +256,195 @@ class TestCycleDetection:
         )
         errors = validate_graph(g)
         assert any("cycle" in e.lower() for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# Structured errors
+# ---------------------------------------------------------------------------
+
+
+class TestStructuredErrors:
+    def test_error_has_kind_and_node_id(self) -> None:
+        g = Graph(
+            name="test",
+            nodes=[
+                BinOp(id="x", op="add", a=1.0, b=2.0),
+                BinOp(id="x", op="mul", a=3.0, b=4.0),
+            ],
+        )
+        errors = validate_graph(g)
+        err = next(e for e in errors if "Duplicate" in e)
+        assert isinstance(err, GraphValidationError)
+        assert err.kind == "duplicate_id"
+        assert err.node_id == "x"
+        assert err.severity == "error"
+
+    def test_dangling_ref_has_field_name(self) -> None:
+        g = Graph(
+            name="test",
+            nodes=[BinOp(id="x", op="add", a="missing", b=1.0)],
+        )
+        errors = validate_graph(g)
+        err = next(e for e in errors if "unknown ID" in e)
+        assert err.kind == "dangling_ref"
+        assert err.node_id == "x"
+        assert err.field_name == "a"
+
+    def test_bad_output_source(self) -> None:
+        g = Graph(
+            name="test",
+            outputs=[AudioOutput(id="out1", source="gone")],
+        )
+        errors = validate_graph(g)
+        err = next(e for e in errors if "does not reference" in e)
+        assert err.kind == "bad_output_source"
+        assert err.node_id == "out1"
+        assert err.field_name == "source"
+
+    def test_missing_delay_line(self) -> None:
+        g = Graph(
+            name="test",
+            nodes=[DelayRead(id="dr", delay="nope", tap=10.0)],
+        )
+        errors = validate_graph(g)
+        err = next(e for e in errors if "delay line" in e)
+        assert err.kind == "missing_delay_line"
+        assert err.node_id == "dr"
+        assert err.field_name == "delay"
+
+    def test_cycle_error_kind(self) -> None:
+        g = Graph(
+            name="test",
+            nodes=[
+                BinOp(id="a", op="add", a="b", b=1.0),
+                BinOp(id="b", op="mul", a="a", b=1.0),
+            ],
+        )
+        errors = validate_graph(g)
+        err = next(e for e in errors if "cycle" in e.lower())
+        assert err.kind == "cycle"
+        assert err.node_id is None
+
+    def test_backward_compat_str_ops(self) -> None:
+        """GraphValidationError should work with str operations seamlessly."""
+        g = Graph(
+            name="test",
+            nodes=[BinOp(id="x", op="add", a="missing", b=1.0)],
+        )
+        errors = validate_graph(g)
+        assert errors != []
+        # join works
+        joined = "; ".join(errors)
+        assert "unknown ID" in joined
+        # f-string works
+        msg = f"error: {errors[0]}"
+        assert "error:" in msg
+        # 'in' works
+        assert any("unknown ID" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# Unmapped param warnings
+# ---------------------------------------------------------------------------
+
+
+def _onepole_inner() -> Graph:
+    return Graph(
+        name="inner_lpf",
+        inputs=[AudioInput(id="sig")],
+        outputs=[AudioOutput(id="filtered", source="lpf")],
+        params=[Param(name="coeff", default=0.5)],
+        nodes=[OnePole(id="lpf", a="sig", coeff="coeff")],
+    )
+
+
+class TestUnmappedParamWarnings:
+    def test_no_warnings_by_default(self) -> None:
+        inner = _onepole_inner()
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="filt")],
+            nodes=[Subgraph(id="filt", graph=inner, inputs={"sig": "in1"})],
+        )
+        errors = validate_graph(g)
+        assert errors == []
+
+    def test_warnings_when_opted_in(self) -> None:
+        inner = _onepole_inner()
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="filt")],
+            nodes=[Subgraph(id="filt", graph=inner, inputs={"sig": "in1"})],
+        )
+        errors = validate_graph(g, warn_unmapped_params=True)
+        warnings = [e for e in errors if e.severity == "warning"]
+        assert len(warnings) == 1
+        assert warnings[0].kind == "unmapped_param"
+        assert "coeff" in warnings[0]
+        assert "0.5" in warnings[0]
+        assert warnings[0].node_id == "filt"
+        assert warnings[0].field_name == "coeff"
+
+    def test_no_warning_when_mapped(self) -> None:
+        inner = _onepole_inner()
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="filt")],
+            params=[Param(name="c", default=0.5)],
+            nodes=[
+                Subgraph(
+                    id="filt",
+                    graph=inner,
+                    inputs={"sig": "in1"},
+                    params={"coeff": "c"},
+                )
+            ],
+        )
+        errors = validate_graph(g, warn_unmapped_params=True)
+        assert errors == []
+
+    def test_nested_subgraph_warnings(self) -> None:
+        inner = _onepole_inner()
+        mid = Graph(
+            name="mid",
+            inputs=[AudioInput(id="x")],
+            outputs=[AudioOutput(id="y", source="sub")],
+            params=[Param(name="mid_p", default=0.1)],
+            nodes=[Subgraph(id="sub", graph=inner, inputs={"sig": "x"})],
+        )
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="outer")],
+            nodes=[Subgraph(id="outer", graph=mid, inputs={"x": "in1"})],
+        )
+        errors = validate_graph(g, warn_unmapped_params=True)
+        warnings = [e for e in errors if e.severity == "warning"]
+        # outer: mid_p unmapped, outer__sub: coeff unmapped
+        assert len(warnings) == 2
+        kinds = {w.node_id for w in warnings}
+        assert "outer" in kinds
+        assert "outer__sub" in kinds
+
+    def test_errors_before_warnings(self) -> None:
+        """Errors should appear before warnings in the list."""
+        inner = _onepole_inner()
+        g = Graph(
+            name="test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="filt")],
+            # Dangling ref will cause an error (the graph is otherwise valid
+            # after expansion, but add a broken node)
+            nodes=[
+                Subgraph(id="filt", graph=inner, inputs={"sig": "in1"}),
+                BinOp(id="broken", op="add", a="nonexistent", b=1.0),
+            ],
+        )
+        errors = validate_graph(g, warn_unmapped_params=True)
+        err_indices = [i for i, e in enumerate(errors) if e.severity == "error"]
+        warn_indices = [i for i, e in enumerate(errors) if e.severity == "warning"]
+        assert err_indices and warn_indices
+        assert max(err_indices) < min(warn_indices)

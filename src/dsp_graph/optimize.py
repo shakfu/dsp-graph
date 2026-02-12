@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Union
+from typing import NamedTuple, Union
 
 from dsp_graph.models import (
     SVF,
@@ -309,6 +309,75 @@ def eliminate_dead_nodes(graph: Graph) -> Graph:
     return graph.model_copy(update={"nodes": new_nodes})
 
 
+def promote_control_rate(graph: Graph) -> Graph:
+    """Promote audio-rate pure nodes to control-rate when all deps are control/invariant.
+
+    A non-stateful node is promoted if it is not already control-rate or
+    loop-invariant, and every string Ref field resolves to a param, literal
+    float, invariant node, or (existing or already-promoted) control-rate node.
+
+    Returns a new Graph with additional entries in ``control_nodes``.
+    No-op when ``control_interval <= 0`` or ``control_nodes`` is empty.
+    """
+    if graph.control_interval <= 0 or not graph.control_nodes:
+        return graph
+
+    from dsp_graph.toposort import toposort
+
+    sorted_nodes = toposort(graph)
+    input_ids = {inp.id for inp in graph.inputs}
+    param_names = {p.name for p in graph.params}
+
+    # Compute invariant set (mirrors compile.py _classify_loop_invariance).
+    invariant_ids: set[str] = set()
+    for node in sorted_nodes:
+        if isinstance(node, _STATEFUL_TYPES):
+            continue
+        is_invariant = True
+        for field_name, value in node.__dict__.items():
+            if field_name in _NON_REF_FIELDS:
+                continue
+            if isinstance(value, float):
+                continue
+            if isinstance(value, str):
+                if value in input_ids:
+                    is_invariant = False
+                    break
+                if value in param_names or value in invariant_ids:
+                    continue
+                is_invariant = False
+                break
+        if is_invariant:
+            invariant_ids.add(node.id)
+
+    # Walk topo-sorted nodes and promote eligible ones.
+    control_set = set(graph.control_nodes)
+    promoted: list[str] = []
+    for node in sorted_nodes:
+        if isinstance(node, _STATEFUL_TYPES):
+            continue
+        if node.id in control_set or node.id in invariant_ids:
+            continue
+        is_promotable = True
+        for field_name, value in node.__dict__.items():
+            if field_name in _NON_REF_FIELDS:
+                continue
+            if isinstance(value, float):
+                continue
+            if isinstance(value, str):
+                if value in param_names or value in invariant_ids or value in control_set:
+                    continue
+                is_promotable = False
+                break
+        if is_promotable:
+            promoted.append(node.id)
+            control_set.add(node.id)  # enable transitive promotion
+
+    if not promoted:
+        return graph
+    return graph.model_copy(update={"control_nodes": graph.control_nodes + promoted})
+
+
 _COMMUTATIVE_OPS = frozenset({"add", "mul", "min", "max"})
 
 _NON_REF_FIELDS = frozenset({"id", "op", "interp", "mode"})
@@ -413,12 +482,56 @@ def eliminate_cse(graph: Graph) -> Graph:
     return graph.model_copy(update={"nodes": new_nodes, "outputs": new_outputs})
 
 
-def optimize_graph(graph: Graph) -> Graph:
-    """Apply all optimization passes: constant folding, CSE, then dead node elimination."""
+class OptimizeStats(NamedTuple):
+    """Statistics from a single optimize_graph() run."""
+
+    constants_folded: int
+    cse_merges: int
+    dead_nodes_removed: int
+    control_rate_promoted: int = 0
+
+
+class OptimizeResult(NamedTuple):
+    """Result of optimize_graph(): the optimized graph and pass statistics."""
+
+    graph: Graph
+    stats: OptimizeStats
+
+
+def optimize_graph(graph: Graph) -> OptimizeResult:
+    """Apply all optimization passes: constant folding, CSE, then dead node elimination.
+
+    Returns an ``OptimizeResult(graph, stats)`` named tuple.
+    """
     from dsp_graph.subgraph import expand_subgraphs
 
     graph = expand_subgraphs(graph)
+
     result = constant_fold(graph)
+    orig_types = {n.id: type(n) for n in graph.nodes}
+    constants_folded = sum(
+        1 for n in result.nodes if isinstance(n, Constant) and orig_types.get(n.id) is not Constant
+    )
+
+    before_cse = len(result.nodes)
     result = eliminate_cse(result)
+    cse_merges = before_cse - len(result.nodes)
+
+    after_cse = len(result.nodes)
     result = eliminate_dead_nodes(result)
-    return result
+    # CSE can orphan nodes that only the removed duplicates referenced.
+    # A second dead-node pass catches these.
+    result = eliminate_dead_nodes(result)
+    dead_nodes_removed = after_cse - len(result.nodes)
+
+    before_ctrl = len(result.control_nodes)
+    result = promote_control_rate(result)
+    control_rate_promoted = len(result.control_nodes) - before_ctrl
+
+    stats = OptimizeStats(
+        constants_folded=constants_folded,
+        cse_merges=cse_merges,
+        dead_nodes_removed=dead_nodes_removed,
+        control_rate_promoted=control_rate_promoted,
+    )
+    return OptimizeResult(graph=result, stats=stats)

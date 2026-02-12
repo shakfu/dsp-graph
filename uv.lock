@@ -377,7 +377,7 @@ provides-extras = ["sim"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "gen-dsp", specifier = ">=0.1.6" },
+    { name = "gen-dsp", specifier = ">=0.1.8" },
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "pytest", specifier = ">=9.0.2" },
@@ -400,11 +400,11 @@ wheels = [
 
 [[package]]
 name = "gen-dsp"
-version = "0.1.6"
+version = "0.1.8"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8a/25/d0e5bc09d7b8847787a71051283b86cfd92189273ce0c72902d0073f7ce2/gen_dsp-0.1.6.tar.gz", hash = "sha256:82febe8ea653ef4fe1a7472a75715d177bd8fbfd5860d3fa296bc9c04f0cc15d", size = 136607, upload-time = "2026-02-11T15:00:09.587Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/61/26/587e14efa833bf99339f26d12ce8c35aaf2e240479132bd160a9ea81f18c/gen_dsp-0.1.8.tar.gz", hash = "sha256:b04da9d7cce3c39e24010320dd4755cda897930bdf2918000b6087cd7660a51a", size = 153848, upload-time = "2026-02-12T09:42:39.839Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/68/8a/b88d34e9c683ba52e2494f517a82dd41c7ba774041290f612f7a8cc9b2f3/gen_dsp-0.1.6-py3-none-any.whl", hash = "sha256:3ae36cc60d431f97f9eaa7e432234a27015abcba9859b2222dfaa1a67d9bdb55", size = 203130, upload-time = "2026-02-11T15:00:07.577Z" },
+    { url = "https://files.pythonhosted.org/packages/76/ec/09a3212beab22446ae0b62575d5650bd414ce14c1c65060e4eeaedd34773/gen_dsp-0.1.8-py3-none-any.whl", hash = "sha256:55afe93ff0bdb9e310b6ecd9c5cb497de8151745ac7d2221db84494a868eadf4", size = 220794, upload-time = "2026-02-12T09:42:37.965Z" },
 ]
 
 [[package]]

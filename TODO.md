@@ -4,7 +4,6 @@
 
 All originally planned node types have been implemented (38 total). See README.md for the full list.
 
-
 ## Roadmap
 
 ### Core Completeness
@@ -62,6 +61,25 @@ All originally planned node types have been implemented (38 total). See README.m
 - [x] CLI tool: `dsp-graph compile graph.json -o build/`
 - [x] CLI tool: `dsp-graph validate graph.json`
 - [x] CLI tool: `dsp-graph dot graph.json -o build/`
+
+### Optimization Improvements
+
+- [x] Re-run dead node elimination after CSE in `optimize_graph()` (CSE can create new dead nodes)
+- [x] Return optimization statistics from `optimize_graph()` (nodes folded, CSE merges, dead nodes removed)
+- [x] Multi-rate-aware optimization (cache control-rate outputs across inner loop, hoist rate-invariant subexpressions)
+
+### Validation and Error Reporting
+
+- [x] Structured validation errors: replace `list[str]` with typed error objects carrying `(error_kind, node_id, field_name, message)`
+- [x] Param namespace collision detection during `expand_subgraphs` (param name vs subgraph ID conflicts)
+- [x] Warn on unmapped subgraph params that silently fall back to defaults (opt-in/opt-out)
+
+### CLI
+
+- [x] CLI tool: `dsp-graph compile graph.json -o build/`
+- [x] CLI tool: `dsp-graph validate graph.json`
+- [x] CLI tool: `dsp-graph dot graph.json -o build/`
+- [x] CLI `simulate` subcommand (`dsp-graph simulate graph.json --input input.wav -o output.wav`)
 
 ### Future
 

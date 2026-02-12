@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Multi-rate-aware optimization: `promote_control_rate()` pass auto-promotes audio-rate pure nodes to control-rate when all their dependencies are params, literals, invariant, or control-rate nodes. Transitive promotion supported (chains of promotable nodes). Integrated into `optimize_graph()` as the final pass; count reported via `OptimizeStats.control_rate_promoted`. No-op when `control_interval <= 0` or `control_nodes` is empty. Stateful and invariant nodes are never promoted.
+
+- Structured validation errors: `GraphValidationError(str)` replaces plain strings. Each error carries `kind`, `node_id`, `field_name`, and `severity` attributes while remaining fully backward-compatible with all existing `str` operations (`in`, `join`, `==`, f-strings). Exported from `dsp_graph`.
+
+- Param namespace collision detection: `expand_subgraphs()` now raises `ValueError` when an expanded node ID collides with a parent-level param name or audio input ID.
+
+- Unmapped subgraph param warnings: `validate_graph(warn_unmapped_params=True)` emits `severity="warning"` entries for subgraph params that silently fall back to defaults. Recursive through nested subgraphs. CLI: `dsp-graph validate --warn-unmapped-params`.
+
+- CLI `simulate` subcommand: `dsp-graph simulate graph.json [-i [NAME=]FILE] [-o DIR] [-n N] [--param NAME=VALUE] [--sample-rate SR] [--optimize]`. Reads/writes WAV files (PCM16, PCM32, float32) via manual RIFF parsing. Outputs one `{output_id}.wav` per graph output.
+
 - Multi-rate processing: two-tier loop structure with explicit control-rate vs audio-rate node classification.
   - `Graph.control_interval`: samples per control block (0 = disabled, default).
   - `Graph.control_nodes`: list of node IDs that run at control rate (once per block instead of per sample).
@@ -31,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Subgraph IDs derived from graph names for readable prefixed params (e.g. `"lpf_cutoff"`).
   - All params namespaced with subgraph ID prefix for predictable deep nesting.
   - Composition is expressed purely through `Subgraph` wiring + `expand_subgraphs()` -- no new node types.
+
 - 57 new tests covering all combinators, operators, simulation correctness, error cases, edge cases, and integration.
 
 - Python DSP simulator (`dsp_graph.simulate`): per-sample graph execution in Python for prototyping, unit-testing, and correctness verification without C++ compilation.

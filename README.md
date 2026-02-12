@@ -126,6 +126,7 @@ for (int _cb = 0; _cb < n; _cb += 64) {
 ```
 
 Nodes are classified into three tiers:
+
 1. **Invariant** (LICM): pure nodes depending only on params/literals -- hoisted before both loops.
 2. **Control-rate**: nodes listed in `control_nodes` -- computed once per control block.
 3. **Audio-rate**: everything else -- computed per sample.

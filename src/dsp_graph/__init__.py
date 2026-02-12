@@ -66,10 +66,18 @@ from dsp_graph.models import (
     UnaryOp,
     Wrap,
 )
-from dsp_graph.optimize import constant_fold, eliminate_cse, eliminate_dead_nodes, optimize_graph
+from dsp_graph.optimize import (
+    OptimizeResult,
+    OptimizeStats,
+    constant_fold,
+    eliminate_cse,
+    eliminate_dead_nodes,
+    optimize_graph,
+    promote_control_rate,
+)
 from dsp_graph.subgraph import expand_subgraphs
 from dsp_graph.toposort import toposort
-from dsp_graph.validate import validate_graph
+from dsp_graph.validate import GraphValidationError, validate_graph
 from dsp_graph.visualize import graph_to_dot, graph_to_dot_file
 
 __version__ = "0.1.6"
@@ -97,6 +105,7 @@ __all__ = [
     "Delta",
     "Fold",
     "Graph",
+    "GraphValidationError",
     "History",
     "Latch",
     "Mix",
@@ -135,7 +144,10 @@ __all__ = [
     "generate_manifest",
     "graph_to_dot",
     "graph_to_dot_file",
+    "OptimizeResult",
+    "OptimizeStats",
     "optimize_graph",
+    "promote_control_rate",
     "toposort",
     "validate_graph",
 ]
