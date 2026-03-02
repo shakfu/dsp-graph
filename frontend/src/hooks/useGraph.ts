@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import type { Node, Edge } from "@xyflow/react";
-import type { RFNodeData, SimulateResponse, OptimizeResponse } from "../api/types";
+import type {
+  RFNodeData,
+  SimulateResponse,
+  OptimizeResponse,
+  InputSignalType,
+} from "../api/types";
 import {
   loadGraphJson,
   loadGraphGdsp,
@@ -23,12 +28,14 @@ interface GraphState {
   optimizeResult: OptimizeResponse | null;
   layoutOptions: ElkLayoutOptions;
   exportSvg: (() => Promise<void>) | null;
+  inputSignals: Record<string, InputSignalType>;
   error: string | null;
 
   setExportSvg: (fn: (() => Promise<void>) | null) => void;
   setNodes: (nodes: Node<RFNodeData>[]) => void;
   setEdges: (edges: Edge[]) => void;
   selectNode: (node: Node<RFNodeData> | null) => void;
+  setInputSignal: (inputId: string, signalType: InputSignalType) => void;
   loadFromJson: (json: Record<string, unknown>) => Promise<void>;
   loadFromGdsp: (source: string) => Promise<void>;
   exportJson: () => Promise<Record<string, unknown> | null>;
@@ -82,12 +89,15 @@ export const useGraph = create<GraphState>((set, get) => ({
   optimizeResult: null,
   layoutOptions: { ...DEFAULT_LAYOUT_OPTIONS },
   exportSvg: null,
+  inputSignals: {},
   error: null,
 
   setExportSvg: (fn) => set({ exportSvg: fn }),
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
   selectNode: (node) => set({ selectedNode: node }),
+  setInputSignal: (inputId, signalType) =>
+    set((s) => ({ inputSignals: { ...s.inputSignals, [inputId]: signalType } })),
   clearError: () => set({ error: null }),
 
   loadFromJson: async (json) => {
@@ -100,8 +110,10 @@ export const useGraph = create<GraphState>((set, get) => ({
         selectedNode: null,
         simulationResult: null,
         optimizeResult: null,
+        inputSignals: {},
         error: null,
       });
+      await get().runLayout();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -117,8 +129,10 @@ export const useGraph = create<GraphState>((set, get) => ({
         selectedNode: null,
         simulationResult: null,
         optimizeResult: null,
+        inputSignals: {},
         error: null,
       });
+      await get().runLayout();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -156,7 +170,9 @@ export const useGraph = create<GraphState>((set, get) => ({
     const exported = await get().exportJson();
     if (!exported) return;
     try {
-      const result = await simulateGraph(exported, nSamples);
+      const signals = get().inputSignals;
+      const inputs = Object.keys(signals).length > 0 ? signals : undefined;
+      const result = await simulateGraph(exported, nSamples, undefined, inputs);
       set({ simulationResult: result, error: null });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });

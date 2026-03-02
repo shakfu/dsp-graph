@@ -47,3 +47,5 @@ export interface OptimizeResponse {
 export interface CompileResponse {
   cpp_source: string;
 }
+
+export type InputSignalType = "impulse" | "sine" | "noise" | "ones";

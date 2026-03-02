@@ -13,7 +13,7 @@ export interface ElkLayoutOptions {
 
 export const DEFAULT_LAYOUT_OPTIONS: ElkLayoutOptions = {
   algorithm: "layered",
-  direction: "RIGHT",
+  direction: "DOWN",
   nodeSpacing: 50,
   layerSpacing: 150,
 };

@@ -58,12 +58,14 @@ export async function getNodeTypes(): Promise<{
 export async function simulateGraph(
   graph: Record<string, unknown>,
   nSamples: number,
-  params?: Record<string, number>
+  params?: Record<string, number>,
+  inputs?: Record<string, string>
 ): Promise<SimulateResponse> {
   return post<SimulateResponse>("/simulate", {
     graph,
     n_samples: nSamples,
     params,
+    inputs,
   });
 }
 

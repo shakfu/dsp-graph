@@ -9,12 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Synthetic input generation for simulation: graphs with AudioInput nodes now receive generated input signals instead of silence. Supported signal types: impulse, sine (440 Hz), white noise, and DC (ones).
+- Per-input signal type selector in the SimulationPanel: each AudioInput gets a dropdown to choose the signal type before running simulation.
+- `inputs` field on the `/api/simulate` endpoint: callers can specify signal types per input ID (e.g. `{"in1": "sine", "in2": "ones"}`).
+- Auto-layout on graph load: opening a graph now applies the ELK layout automatically so the configured direction takes effect immediately.
 - SVG export: "Export SVG" toolbar button captures the current canvas viewport as a downloadable SVG file via html-to-image.
 - Auto fit-view on graph load: newly loaded graphs are centered and scaled to fit the canvas.
 - Client-side graph layout via elkjs: five layout algorithms (layered, stress, mrtree, radial, force) with configurable direction and node/layer spacing, all running in the browser with no server round-trip.
 - LayoutPanel sidebar component with algorithm/direction dropdowns, spacing inputs, and "Apply Layout" button.
 - `elkLayout()` async utility converting React Flow nodes/edges to ELK format and returning updated positions.
 - Layout state and actions (`layoutOptions`, `setLayoutOptions`, `runLayout`) in the zustand store.
+
+### Changed
+
+- Default layout direction changed from RIGHT to DOWN.
+- Default simulation input signal changed from impulse to sine (440 Hz) for more useful output visualization.
 
 ## [0.2.0]
 
