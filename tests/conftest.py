@@ -1,27 +1,31 @@
+"""Shared fixtures for dsp-graph tests."""
+
 from __future__ import annotations
 
-import pytest
+from typing import Any
 
-from dsp_graph import (
+import pytest
+from fastapi.testclient import TestClient
+from gen_dsp.graph.models import (
     AudioInput,
     AudioOutput,
     BinOp,
-    Buffer,
-    BufRead,
-    BufWrite,
-    DelayLine,
-    DelayRead,
-    DelayWrite,
     Graph,
     History,
-    OnePole,
     Param,
-    SinOsc,
+    Phasor,
 )
+
+from dsp_graph.server import app
 
 
 @pytest.fixture
-def stereo_gain_graph() -> Graph:
+def client() -> TestClient:
+    return TestClient(app)
+
+
+@pytest.fixture
+def stereo_gain() -> Graph:
     """Stateless stereo gain: in1 * gain -> out1, in2 * gain -> out2."""
     return Graph(
         name="stereo_gain",
@@ -39,7 +43,7 @@ def stereo_gain_graph() -> Graph:
 
 
 @pytest.fixture
-def onepole_graph() -> Graph:
+def onepole() -> Graph:
     """One-pole lowpass filter with feedback via History."""
     return Graph(
         name="onepole",
@@ -57,70 +61,29 @@ def onepole_graph() -> Graph:
 
 
 @pytest.fixture
-def fbdelay_graph() -> Graph:
-    """Feedback delay with delay line, feedback, and dry/wet mix."""
+def phasor_graph() -> Graph:
+    """Minimal phasor graph for simulation testing."""
     return Graph(
-        name="fbdelay",
-        inputs=[AudioInput(id="in1")],
-        outputs=[AudioOutput(id="out1", source="mix_out")],
-        params=[
-            Param(name="delay_ms", min=1.0, max=1000.0, default=250.0),
-            Param(name="feedback", min=0.0, max=0.95, default=0.5),
-            Param(name="mix", min=0.0, max=1.0, default=0.5),
-        ],
+        name="phasor",
+        inputs=[],
+        outputs=[AudioOutput(id="out1", source="ph")],
+        params=[Param(name="freq", min=1.0, max=20000.0, default=440.0)],
         nodes=[
-            BinOp(id="sr_ms", op="div", a=44100.0, b=1000.0),
-            BinOp(id="tap", op="mul", a="delay_ms", b="sr_ms"),
-            DelayLine(id="dline", max_samples=48000),
-            DelayRead(id="delayed", delay="dline", tap="tap"),
-            BinOp(id="fb_scaled", op="mul", a="delayed", b="feedback"),
-            BinOp(id="write_val", op="add", a="in1", b="fb_scaled"),
-            DelayWrite(id="dwrite", delay="dline", value="write_val"),
-            BinOp(id="inv_mix", op="sub", a=1.0, b="mix"),
-            BinOp(id="dry", op="mul", a="in1", b="inv_mix"),
-            BinOp(id="wet", op="mul", a="delayed", b="mix"),
-            BinOp(id="mix_out", op="add", a="dry", b="wet"),
+            Phasor(id="ph", freq="freq"),
         ],
     )
 
 
 @pytest.fixture
-def gen_dsp_graph() -> Graph:
-    """Rich graph for gen-dsp adapter testing.
+def stereo_gain_json(stereo_gain: Graph) -> dict[str, Any]:
+    return stereo_gain.model_dump()
 
-    2 inputs, 2 outputs, params, buffer, delay, oscillator, filter.
-    Exercises the full adapter surface area.
-    """
-    return Graph(
-        name="test_synth",
-        inputs=[AudioInput(id="in1"), AudioInput(id="in2")],
-        outputs=[
-            AudioOutput(id="out1", source="mixed1"),
-            AudioOutput(id="out2", source="filtered"),
-        ],
-        params=[
-            Param(name="freq", min=20.0, max=20000.0, default=440.0),
-            Param(name="gain", min=0.0, max=1.0, default=0.5),
-            Param(name="cutoff", min=0.0, max=0.999, default=0.3),
-        ],
-        nodes=[
-            # Oscillator
-            SinOsc(id="osc1", freq="freq"),
-            BinOp(id="osc_scaled", op="mul", a="osc1", b="gain"),
-            # Mix oscillator with input
-            BinOp(id="mixed1", op="add", a="in1", b="osc_scaled"),
-            # Filter on second channel
-            OnePole(id="lp", a="in2", coeff="cutoff"),
-            # Delay line
-            DelayLine(id="dly", max_samples=4800),
-            DelayWrite(id="dly_wr", delay="dly", value="lp"),
-            DelayRead(id="dly_rd", delay="dly", tap=2400.0),
-            BinOp(id="filtered", op="add", a="lp", b="dly_rd"),
-            # History for feedback
-            History(id="prev_out", init=0.0, input="filtered"),
-            # Buffer (wavetable)
-            Buffer(id="wt", size=1024),
-            BufRead(id="wt_rd", buffer="wt", index=0.0),
-            BufWrite(id="wt_wr", buffer="wt", index=0.0, value="osc1"),
-        ],
-    )
+
+@pytest.fixture
+def onepole_json(onepole: Graph) -> dict[str, Any]:
+    return onepole.model_dump()
+
+
+@pytest.fixture
+def phasor_json(phasor_graph: Graph) -> dict[str, Any]:
+    return phasor_graph.model_dump()

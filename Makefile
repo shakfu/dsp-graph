@@ -1,8 +1,8 @@
-.PHONY: install install-dev test lint typecheck format qa clean \
-		dist sdist check publish-test publish \
-		examples examples-gen examples-build \
-		examples-gen-dsp build-examples-gen-dsp validate-examples-gen-dsp
+.PHONY: install install-dev test lint typecheck format qa \
+	frontend-install frontend-dev frontend-build \
+	serve dev dist clean
 
+# Python
 install:
 	uv pip install -e .
 
@@ -19,55 +19,32 @@ typecheck:
 	uv run mypy --strict src/
 
 format:
-	uv run ruff format src/ tests/ examples/
+	uv run ruff format src/ tests/
 
 qa: test lint typecheck format
 
-EXAMPLES := $(wildcard examples/*.py)
-CXX      ?= c++
-CXXFLAGS ?= -std=c++17 -Wall -Wextra -Wno-unused-parameter -Wno-unused-variable
+# Frontend
+frontend-install:
+	cd frontend && npm install
 
-examples-gen:
-	@mkdir -p build
-	@for f in $(EXAMPLES); do \
-		echo "  GEN  $$f"; \
-		uv run python "$$f" > /dev/null; \
-	done
+frontend-dev:
+	cd frontend && npm run dev
 
-examples-build: examples-gen
-	@for f in build/*.cpp; do \
-		echo "  CXX  $$f"; \
-		$(CXX) $(CXXFLAGS) -c "$$f" -o "$${f%.cpp}.o"; \
-	done
+frontend-build:
+	cd frontend && npm run build
 
-examples: examples-build
-	@echo "All examples generated and compiled."
+# Server
+serve:
+	uv run dsp-graph serve
 
-examples-gen-dsp:
-	@uv run python examples/gen_dsp_targets.py
+dev:
+	uv run dsp-graph serve --reload
 
-build-examples-gen-dsp:
-	@uv run python examples/gen_dsp_targets.py --build
-
-validate-examples-gen-dsp:
-	@uv run python examples/gen_dsp_targets.py --validate
+# Distribution
+dist: frontend-build
+	uv build
 
 clean:
-	rm -rf dist/ build/ src/*.egg-info src/dsp_graph/__pycache__ .pytest_cache .mypy_cache
-
-dist: clean
-	uv build
-	uv run twine check dist/*
-
-sdist: clean
-	uv build --sdist
-	uv run twine check dist/*
-
-check:
-	uv run twine check dist/*
-
-publish-test: dist
-	uv run twine upload --repository testpypi dist/*
-
-publish: dist
-	uv run twine upload dist/*
+	rm -rf dist/ build/ src/*.egg-info src/dsp_graph/__pycache__ \
+		src/dsp_graph/static/ frontend/node_modules/ \
+		.pytest_cache .mypy_cache

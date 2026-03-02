@@ -1,90 +1,55 @@
 # TODO
 
-## Planned Node Types
+## Graph Editing
 
-All originally planned node types have been implemented (38 total). See README.md for the full list.
+- [ ] Add/delete nodes from the canvas (node palette or context menu)
+- [ ] Draw edges between ports by dragging from source handle to target handle
+- [ ] Delete edges via click or context menu
+- [ ] Duplicate selected node(s)
+- [ ] Undo/redo stack for all graph mutations
 
-## Roadmap
+## Interactive Simulation
 
-### Core Completeness
+- [ ] Real-time parameter sliders in NodeInspector that feed into simulation
+- [ ] Streaming simulation mode: continuously re-simulate as params change
+- [ ] Waveform display (oscilloscope-style) for simulation output
+- [ ] Frequency-domain view (FFT/spectrum) alongside time-domain output
 
-- [x] Add `Compare` and `Select` nodes (conditional logic)
-- [x] Add `Wrap` and `Fold` nodes (waveshaping boundaries)
-- [x] Extend `BinOp` with `min`, `max`, `mod`, `pow`
-- [x] Extend `UnaryOp` with `floor`, `ceil`, `round`, `sign`
-- [x] Add `Mix` node (very common DSP pattern)
-- [x] Add `Delta` and `Change` nodes (signal edge detection)
-- [x] Optimization pass: constant folding (e.g. `44100.0 / 1000.0` -> `44.1f`)
-- [x] Optimization pass: dead node elimination (unreachable from outputs)
-- [x] Interpolated delay reads (linear/cubic) -- currently integer-only
+## Validation & Diagnostics
 
-### Filters and Oscillators
+- [ ] Live validation overlay: highlight invalid nodes/edges in red as the graph is edited
+- [ ] Validation panel showing all errors/warnings with click-to-select-node navigation
+- [ ] Cycle detection visualization: highlight feedback loops on the canvas
 
-- [x] `Biquad` node with coefficient inputs
-- [x] `SVF` node (state-variable filter: lp/hp/bp/notch)
-- [x] `OnePole` and `DCBlock` as built-in compound nodes
-- [x] `Allpass` node
-- [x] Oscillator primitives: `SinOsc`, `TriOsc`, `SawOsc`, `PulseOsc`
-- [x] `SampleHold`, `Latch`, `Accum`, `Counter` state nodes
-- [x] Extend `UnaryOp` with `atan`, `asin`, `acos` (inverse trig)
+## Import / Export
 
-### Buffers and Tables
+- [ ] PNG export (raster alternative to SVG)
+- [ ] Import from C++ gen-dsp target code (round-trip from compiled output)
+- [ ] Copy graph snippet to clipboard as .gdsp DSL source
+- [ ] Drag-and-drop file loading (drop JSON/.gdsp onto canvas)
 
-- [x] `Buffer` / `BufRead` / `BufWrite` / `BufSize` node family
-- [x] Interpolation modes for `BufRead` (none, linear, cubic)
-- [x] External buffer loading API (fill from Python, pass to C++)
-- [x] Wavetable oscillator as `Buffer` + `Phasor` + `BufRead`
+## Collaboration & Persistence
 
-### gen-dsp Integration
+- [ ] Save/load graphs to browser localStorage or IndexedDB
+- [ ] Shareable URL encoding (graph state in URL hash or query param)
+- [ ] Multi-tab awareness: warn if same graph is open in another tab
 
-- [x] Thin C++ adapter: gen-dsp `_ext.h` interface wrapping dsp-graph `create/destroy/reset/perform`
-- [x] Generate adapter alongside `.cpp` so dsp-graph outputs drop into gen-dsp platform backends
-- [x] Shared param introspection (manifest.json, compatible with `gen_dsp.core.manifest.Manifest`)
-- [x] Integration tests: dsp-graph -> gen-dsp -> ChucK/CLAP/AU g++ compilation
-- [x] `{name}_reset()` function: reinitialize all state without reallocating
+## Performance & UX
 
-### Advanced Compiler Optimizations
+- [ ] Keyboard shortcuts (delete node, fit view, export, undo)
+- [ ] Search/filter nodes by name or op type
+- [ ] Node grouping / subgraph collapse for large graphs
+- [ ] Dark mode theme
+- [ ] Touch/trackpad gesture improvements for mobile/tablet use
 
-- [x] Common subexpression elimination
-- [x] Loop-invariant code motion (hoist param-only expressions out of sample loop)
-- [x] SIMD vectorization hints (mark inner loop as vectorizable)
+## Compile & Code Generation
 
-### New Node Types
+- [ ] Side-by-side diff view for C++ output before/after optimization
+- [ ] Syntax-highlighted C++ preview panel (instead of plain text)
+- [ ] Download generated C++ as a file
 
-- [x] `RateDiv` node (output every N-th sample, hold between)
-- [x] `Scale` node (linear range mapping: `in_lo..in_hi` -> `out_lo..out_hi`)
-- [x] `SmoothParam` node (one-pole smoothing for parameter changes)
-- [x] `Peek` node (debug pass-through readable externally)
+## Testing
 
-### CLI
-
-- [x] CLI tool: `dsp-graph compile graph.json -o build/`
-- [x] CLI tool: `dsp-graph validate graph.json`
-- [x] CLI tool: `dsp-graph dot graph.json -o build/`
-
-### Optimization Improvements
-
-- [x] Re-run dead node elimination after CSE in `optimize_graph()` (CSE can create new dead nodes)
-- [x] Return optimization statistics from `optimize_graph()` (nodes folded, CSE merges, dead nodes removed)
-- [x] Multi-rate-aware optimization (cache control-rate outputs across inner loop, hoist rate-invariant subexpressions)
-
-### Validation and Error Reporting
-
-- [x] Structured validation errors: replace `list[str]` with typed error objects carrying `(error_kind, node_id, field_name, message)`
-- [x] Param namespace collision detection during `expand_subgraphs` (param name vs subgraph ID conflicts)
-- [x] Warn on unmapped subgraph params that silently fall back to defaults (opt-in/opt-out)
-
-### CLI
-
-- [x] CLI tool: `dsp-graph compile graph.json -o build/`
-- [x] CLI tool: `dsp-graph validate graph.json`
-- [x] CLI tool: `dsp-graph dot graph.json -o build/`
-- [x] CLI `simulate` subcommand (`dsp-graph simulate graph.json --input input.wav -o output.wav`)
-
-### Future
-
-- [x] Subgraph / macro nodes (inline a Graph as a node in another Graph)
-- [x] Multi-rate processing (control-rate vs audio-rate distinction)
-- [x] Python DSP simulator (interpret graph in Python for prototyping)
-- [ ] WebAssembly codegen target
-- [x] FAUST-style block diagram algebra (series `>>`, parallel `<<`, split/merge)
+- [ ] Frontend component tests (React Testing Library or Playwright)
+- [ ] End-to-end tests: load graph, simulate, export, verify results
+- [ ] Visual regression tests for SVG export
