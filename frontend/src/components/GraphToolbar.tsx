@@ -10,6 +10,13 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const activeButtonStyle: React.CSSProperties = {
+  ...buttonStyle,
+  background: "#0d6efd",
+  color: "#fff",
+  borderColor: "#0d6efd",
+};
+
 export function GraphToolbar() {
   const loadFromJson = useGraph((s) => s.loadFromJson);
   const loadFromGdsp = useGraph((s) => s.loadFromGdsp);
@@ -18,6 +25,11 @@ export function GraphToolbar() {
   const graphName = useGraph((s) => s.graphName);
   const error = useGraph((s) => s.error);
   const clearError = useGraph((s) => s.clearError);
+  const showEditor = useGraph((s) => s.showEditor);
+  const setShowEditor = useGraph((s) => s.setShowEditor);
+  const isLivePreview = useGraph((s) => s.isLivePreview);
+  const setLivePreview = useGraph((s) => s.setLivePreview);
+  const setGdspSource = useGraph((s) => s.setGdspSource);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const handleFileLoad = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -26,6 +38,8 @@ export function GraphToolbar() {
     try {
       const text = await file.text();
       if (file.name.endsWith(".gdsp")) {
+        setGdspSource(text);
+        setShowEditor(true);
         await loadFromGdsp(text);
       } else {
         const json = JSON.parse(text);
@@ -51,6 +65,13 @@ export function GraphToolbar() {
     URL.revokeObjectURL(url);
   };
 
+  const handleManualParse = async () => {
+    const source = useGraph.getState().gdspSource;
+    if (source.trim()) {
+      await loadFromGdsp(source);
+    }
+  };
+
   return (
     <div
       style={{
@@ -60,6 +81,7 @@ export function GraphToolbar() {
         padding: "6px 12px",
         borderBottom: "1px solid #ddd",
         background: "#f8f9fa",
+        flexShrink: 0,
       }}
     >
       <strong style={{ fontSize: 14 }}>dsp-graph</strong>
@@ -67,6 +89,26 @@ export function GraphToolbar() {
         <span style={{ fontSize: 12, color: "#666" }}>/ {graphName}</span>
       )}
       <div style={{ flex: 1 }} />
+      <button
+        style={showEditor ? activeButtonStyle : buttonStyle}
+        onClick={() => setShowEditor(!showEditor)}
+      >
+        Editor
+      </button>
+      <button
+        style={isLivePreview ? activeButtonStyle : buttonStyle}
+        onClick={() => setLivePreview(!isLivePreview)}
+      >
+        Live
+      </button>
+      {!isLivePreview && (
+        <button style={buttonStyle} onClick={() => void handleManualParse()}>
+          Parse
+        </button>
+      )}
+      <div
+        style={{ width: 1, height: 20, background: "#ddd", margin: "0 4px" }}
+      />
       <input
         ref={fileInput}
         type="file"
@@ -75,7 +117,7 @@ export function GraphToolbar() {
         onChange={handleFileLoad}
       />
       <button style={buttonStyle} onClick={() => fileInput.current?.click()}>
-        Load Graph
+        Load File
       </button>
       <button style={buttonStyle} onClick={handleExport}>
         Export JSON

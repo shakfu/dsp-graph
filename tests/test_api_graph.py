@@ -67,6 +67,50 @@ class TestNodeTypes:
         data = resp.json()
         assert "colors" in data
         assert "mul" in data["colors"]
+        # Catalog should be present
+        assert "catalog" in data
+        catalog = data["catalog"]
+        # Phasor should have freq field
+        assert "phasor" in catalog
+        assert "freq" in catalog["phasor"]["fields"]
+        assert catalog["phasor"]["fields"]["freq"]["required"] is True
+        # BinOp ops like add should have a and b
+        assert "add" in catalog
+        assert "a" in catalog["add"]["fields"]
+        assert "b" in catalog["add"]["fields"]
+        # Each entry should have class, fields, color
+        for op, info in catalog.items():
+            assert "class" in info
+            assert "fields" in info
+            assert "color" in info
+
+
+class TestLoadGdsp:
+    def test_load_valid_gdsp(self, client: TestClient) -> None:
+        source = (
+            "graph simple {\n"
+            "  param freq 1.0 .. 20000.0 = 440.0\n"
+            "  ph = phasor(freq)\n"
+            "  out out1 = ph\n"
+            "}"
+        )
+        resp = client.post("/api/graph/load/gdsp", json={"source": source})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "nodes" in data
+        assert "edges" in data
+        assert len(data["nodes"]) > 0
+
+    def test_load_invalid_gdsp_structured_error(self, client: TestClient) -> None:
+        source = "graph bad {\n  broken syntax here\n}"
+        resp = client.post("/api/graph/load/gdsp", json={"source": source})
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert "message" in detail
+        assert "line" in detail
+        assert "col" in detail
+        assert isinstance(detail["line"], int)
+        assert isinstance(detail["col"], int)
 
 
 class TestDot:

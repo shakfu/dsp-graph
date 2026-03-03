@@ -4,6 +4,8 @@ import type {
   SimulateResponse,
   OptimizeResponse,
   CompileResponse,
+  ParseError,
+  NodeTypeCatalog,
 } from "./types";
 
 const BASE = "/api";
@@ -37,6 +39,31 @@ export async function loadGraphGdsp(source: string): Promise<ReactFlowGraph> {
   return post<ReactFlowGraph>("/graph/load/gdsp", { source });
 }
 
+export async function loadGraphGdspWithErrors(
+  source: string,
+  signal?: AbortSignal
+): Promise<{ graph?: ReactFlowGraph; error?: ParseError }> {
+  const resp = await fetch(`${BASE}/graph/load/gdsp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source }),
+    signal,
+  });
+  if (resp.ok) {
+    const graph = (await resp.json()) as ReactFlowGraph;
+    return { graph };
+  }
+  if (resp.status === 422) {
+    const body = await resp.json();
+    const detail = body.detail;
+    if (detail && typeof detail === "object" && "message" in detail) {
+      return { error: detail as ParseError };
+    }
+    return { error: { message: String(detail), line: 0, col: 0 } };
+  }
+  throw new Error(`API error ${resp.status}`);
+}
+
 export async function validateGraph(
   graph: Record<string, unknown>
 ): Promise<ValidateResponse> {
@@ -51,8 +78,11 @@ export async function exportGraphJson(
 
 export async function getNodeTypes(): Promise<{
   colors: Record<string, string>;
+  catalog: NodeTypeCatalog;
 }> {
-  return get<{ colors: Record<string, string> }>("/graph/node-types");
+  return get<{ colors: Record<string, string>; catalog: NodeTypeCatalog }>(
+    "/graph/node-types"
+  );
 }
 
 export async function simulateGraph(

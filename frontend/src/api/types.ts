@@ -49,3 +49,23 @@ export interface CompileResponse {
 }
 
 export type InputSignalType = "impulse" | "sine" | "noise" | "ones";
+
+export interface ParseError {
+  message: string;
+  line: number;
+  col: number;
+}
+
+export interface NodeFieldInfo {
+  type: string;
+  required: boolean;
+  default?: unknown;
+}
+
+export interface NodeTypeInfo {
+  class: string;
+  fields: Record<string, NodeFieldInfo>;
+  color: string;
+}
+
+export type NodeTypeCatalog = Record<string, NodeTypeInfo>;

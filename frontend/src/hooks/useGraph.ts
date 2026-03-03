@@ -4,7 +4,11 @@ import type {
   RFNodeData,
   SimulateResponse,
   OptimizeResponse,
+  CompileResponse,
+  ValidateResponse,
   InputSignalType,
+  ParseError,
+  NodeTypeCatalog,
 } from "../api/types";
 import {
   loadGraphJson,
@@ -12,6 +16,9 @@ import {
   exportGraphJson,
   simulateGraph,
   optimizeGraph,
+  compileGraph,
+  validateGraph,
+  getNodeTypes,
 } from "../api/client";
 import {
   elkLayout,
@@ -26,10 +33,21 @@ interface GraphState {
   selectedNode: Node<RFNodeData> | null;
   simulationResult: SimulateResponse | null;
   optimizeResult: OptimizeResponse | null;
+  compileResult: CompileResponse | null;
+  validationResult: ValidateResponse | null;
   layoutOptions: ElkLayoutOptions;
   exportSvg: (() => Promise<void>) | null;
   inputSignals: Record<string, InputSignalType>;
   error: string | null;
+
+  // Editor state
+  gdspSource: string;
+  parseError: ParseError | null;
+  isLivePreview: boolean;
+  showEditor: boolean;
+
+  // Node catalog
+  nodeTypeCatalog: NodeTypeCatalog | null;
 
   setExportSvg: (fn: (() => Promise<void>) | null) => void;
   setNodes: (nodes: Node<RFNodeData>[]) => void;
@@ -41,9 +59,16 @@ interface GraphState {
   exportJson: () => Promise<Record<string, unknown> | null>;
   runSimulation: (nSamples: number) => Promise<void>;
   runOptimize: () => Promise<void>;
+  runCompile: () => Promise<void>;
+  runValidate: () => Promise<void>;
   setLayoutOptions: (opts: Partial<ElkLayoutOptions>) => void;
   runLayout: () => Promise<void>;
   clearError: () => void;
+  setGdspSource: (source: string) => void;
+  setParseError: (error: ParseError | null) => void;
+  setLivePreview: (on: boolean) => void;
+  setShowEditor: (show: boolean) => void;
+  fetchNodeTypes: () => Promise<void>;
 }
 
 function toFlowNodes(
@@ -87,10 +112,17 @@ export const useGraph = create<GraphState>((set, get) => ({
   selectedNode: null,
   simulationResult: null,
   optimizeResult: null,
+  compileResult: null,
+  validationResult: null,
   layoutOptions: { ...DEFAULT_LAYOUT_OPTIONS },
   exportSvg: null,
   inputSignals: {},
   error: null,
+  gdspSource: "",
+  parseError: null,
+  isLivePreview: true,
+  showEditor: true,
+  nodeTypeCatalog: null,
 
   setExportSvg: (fn) => set({ exportSvg: fn }),
   setNodes: (nodes) => set({ nodes }),
@@ -99,6 +131,10 @@ export const useGraph = create<GraphState>((set, get) => ({
   setInputSignal: (inputId, signalType) =>
     set((s) => ({ inputSignals: { ...s.inputSignals, [inputId]: signalType } })),
   clearError: () => set({ error: null }),
+  setGdspSource: (source) => set({ gdspSource: source }),
+  setParseError: (error) => set({ parseError: error }),
+  setLivePreview: (on) => set({ isLivePreview: on }),
+  setShowEditor: (show) => set({ showEditor: show }),
 
   loadFromJson: async (json) => {
     try {
@@ -110,6 +146,8 @@ export const useGraph = create<GraphState>((set, get) => ({
         selectedNode: null,
         simulationResult: null,
         optimizeResult: null,
+        compileResult: null,
+        validationResult: null,
         inputSignals: {},
         error: null,
       });
@@ -126,10 +164,14 @@ export const useGraph = create<GraphState>((set, get) => ({
         nodes: toFlowNodes(rf.nodes),
         edges: toFlowEdges(rf.edges),
         graphName: rf.name,
+        gdspSource: source,
         selectedNode: null,
         simulationResult: null,
         optimizeResult: null,
+        compileResult: null,
+        validationResult: null,
         inputSignals: {},
+        parseError: null,
         error: null,
       });
       await get().runLayout();
@@ -179,6 +221,28 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
+  runCompile: async () => {
+    const exported = await get().exportJson();
+    if (!exported) return;
+    try {
+      const result = await compileGraph(exported);
+      set({ compileResult: result, error: null });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  runValidate: async () => {
+    const exported = await get().exportJson();
+    if (!exported) return;
+    try {
+      const result = await validateGraph(exported);
+      set({ validationResult: result, error: null });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
   setLayoutOptions: (opts) =>
     set((s) => ({ layoutOptions: { ...s.layoutOptions, ...opts } })),
 
@@ -206,6 +270,15 @@ export const useGraph = create<GraphState>((set, get) => ({
       });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  fetchNodeTypes: async () => {
+    try {
+      const result = await getNodeTypes();
+      set({ nodeTypeCatalog: result.catalog });
+    } catch (e) {
+      console.error("Failed to fetch node types:", e);
     }
   },
 }));
