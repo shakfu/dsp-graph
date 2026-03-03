@@ -3,6 +3,7 @@ import { NodeInspector } from "./NodeInspector";
 import { SimulationPanel } from "./SimulationPanel";
 import { OptimizePanel } from "./OptimizePanel";
 import { LayoutPanel } from "./LayoutPanel";
+import { BuildPanel } from "./BuildPanel";
 import { NodeCatalog } from "./NodeCatalog";
 import { useGraph } from "../hooks/useGraph";
 
@@ -26,9 +27,10 @@ export function Sidebar() {
   const selectedNode = useGraph((s) => s.selectedNode);
   const simulationResult = useGraph((s) => s.simulationResult);
   const optimizeResult = useGraph((s) => s.optimizeResult);
-  const nodes = useGraph((s) => s.nodes);
-  const runCompile = useGraph((s) => s.runCompile);
-
+  const validationErrors = useGraph((s) => s.validationErrors);
+  const selectNode = useGraph((s) => s.selectNode);
+  const storeNodes = useGraph((s) => s.nodes);
+  const nodes = storeNodes;
   const [activeTab, setActiveTab] = useState<Tab>("tools");
 
   return (
@@ -102,6 +104,39 @@ export function Sidebar() {
                 </pre>
               </div>
             )}
+            {validationErrors.length > 0 && (
+              <div style={{ marginTop: 12, borderTop: "1px solid #ddd", paddingTop: 12 }}>
+                <h4 style={{ margin: "0 0 8px", fontSize: 13 }}>
+                  Validation Errors ({validationErrors.length})
+                </h4>
+                {validationErrors.map((err, i) => (
+                  <div
+                    key={i}
+                    onClick={() => {
+                      if (err.node_id) {
+                        const node = nodes.find((n) => n.id === err.node_id);
+                        if (node) selectNode(node);
+                      }
+                    }}
+                    style={{
+                      padding: "4px 6px",
+                      marginBottom: 4,
+                      fontSize: 11,
+                      borderRadius: 3,
+                      cursor: err.node_id ? "pointer" : "default",
+                      background: err.severity === "error" ? "#f8d7da" : "#fff3cd",
+                      border: `1px solid ${err.severity === "error" ? "#f5c6cb" : "#ffeeba"}`,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600 }}>[{err.kind}]</span>{" "}
+                    {err.message}
+                    {err.node_id && (
+                      <span style={{ color: "#666" }}> (node: {err.node_id})</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 
@@ -109,27 +144,7 @@ export function Sidebar() {
           <>
             <SimulationPanel />
             <OptimizePanel />
-            {nodes.length > 0 && (
-              <div style={{ marginTop: 12, borderTop: "1px solid #ddd", paddingTop: 12 }}>
-                <h4 style={{ margin: "0 0 8px", fontSize: 13 }}>Compile</h4>
-                <button
-                  onClick={() => void runCompile()}
-                  style={{
-                    padding: "4px 10px",
-                    fontSize: 12,
-                    border: "1px solid #ccc",
-                    borderRadius: 4,
-                    background: "#fff",
-                    cursor: "pointer",
-                  }}
-                >
-                  Compile to C++
-                </button>
-                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
-                  Output appears in the C++ editor tab.
-                </div>
-              </div>
-            )}
+            <BuildPanel />
             <LayoutPanel />
           </>
         )}

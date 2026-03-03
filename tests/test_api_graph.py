@@ -32,7 +32,7 @@ class TestValidate:
         assert data["valid"] is True
         assert data["errors"] == []
 
-    def test_validate_invalid(self, client: TestClient) -> None:
+    def test_validate_invalid_parse(self, client: TestClient) -> None:
         resp = client.post(
             "/api/graph/validate",
             json={"graph": {"name": "bad", "nodes": [{"op": "nonexistent"}]}},
@@ -41,12 +41,37 @@ class TestValidate:
         data = resp.json()
         assert data["valid"] is False
         assert len(data["errors"]) > 0
+        err = data["errors"][0]
+        assert "message" in err
+        assert "kind" in err
+        assert "severity" in err
+
+    def test_validate_structural_error_returns_structured_details(
+        self, client: TestClient
+    ) -> None:
+        """A graph with dangling output source returns structured error details."""
+        graph = {
+            "name": "dangling",
+            "inputs": [],
+            "outputs": [{"id": "out1", "source": "missing_node"}],
+            "params": [],
+            "nodes": [],
+        }
+        resp = client.post("/api/graph/validate", json={"graph": graph})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is False
+        assert len(data["errors"]) >= 1
+        err = data["errors"][0]
+        assert err["kind"] == "bad_output_source"
+        assert err["node_id"] == "out1"
+        assert err["field_name"] == "source"
+        assert err["severity"] == "error"
+        assert "missing_node" in err["message"]
 
 
 class TestExport:
-    def test_export_roundtrip(
-        self, client: TestClient, stereo_gain_json: dict[str, Any]
-    ) -> None:
+    def test_export_roundtrip(self, client: TestClient, stereo_gain_json: dict[str, Any]) -> None:
         # Load to get ReactFlow
         load_resp = client.post("/api/graph/load/json", json={"graph": stereo_gain_json})
         rf = load_resp.json()

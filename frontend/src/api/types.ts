@@ -29,13 +29,26 @@ export interface ReactFlowGraph {
   control_interval: number;
 }
 
+export interface ValidationErrorDetail {
+  message: string;
+  kind: string;
+  node_id: string | null;
+  field_name: string | null;
+  severity: string;
+}
+
 export interface ValidateResponse {
   valid: boolean;
-  errors: string[];
+  errors: ValidationErrorDetail[];
 }
 
 export interface SimulateResponse {
   outputs: Record<string, number[]>;
+  session_id: string;
+}
+
+export interface PeekResponse {
+  values: Record<string, number>;
 }
 
 export interface OptimizeResponse {
@@ -46,6 +59,14 @@ export interface OptimizeResponse {
 
 export interface CompileResponse {
   cpp_source: string;
+}
+
+export interface BuildResponse {
+  dsp_cpp: string;
+  adapter_cpp: string;
+  manifest: string;
+  platform: string;
+  supported_platforms: string[];
 }
 
 export type InputSignalType = "impulse" | "sine" | "noise" | "ones";

@@ -1,4 +1,4 @@
-"""Tests for /api/simulate endpoint."""
+"""Tests for /api/simulate* endpoints."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ class TestSimulate:
         assert "outputs" in data
         assert "out1" in data["outputs"]
         assert len(data["outputs"]["out1"]) == 32
+        assert "session_id" in data
 
     def test_simulate_with_param_override(
         self, client: TestClient, phasor_json: dict[str, Any]
@@ -88,3 +89,119 @@ class TestSimulate:
             json={"graph": {"name": "bad", "nodes": [{"op": "nonexistent_op"}]}, "n_samples": 10},
         )
         assert resp.status_code == 422
+
+
+class TestStatefulSimulation:
+    def test_simulate_returns_session_id(
+        self, client: TestClient, phasor_json: dict[str, Any]
+    ) -> None:
+        resp = client.post(
+            "/api/simulate",
+            json={"graph": phasor_json, "n_samples": 16},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "session_id" in data
+        assert len(data["session_id"]) > 0
+
+    def test_continue_produces_different_output(
+        self, client: TestClient, phasor_json: dict[str, Any]
+    ) -> None:
+        """Continuing a session produces different output than the initial run."""
+        # Initial simulation
+        resp1 = client.post(
+            "/api/simulate",
+            json={"graph": phasor_json, "n_samples": 16},
+        )
+        assert resp1.status_code == 200
+        data1 = resp1.json()
+        session_id = data1["session_id"]
+        out1 = data1["outputs"]["out1"]
+
+        # Continue from same state
+        resp2 = client.post(
+            "/api/simulate/continue",
+            json={"session_id": session_id, "n_samples": 16},
+        )
+        assert resp2.status_code == 200
+        data2 = resp2.json()
+        out2 = data2["outputs"]["out1"]
+
+        # Phasor is stateful: continued output should differ from initial
+        assert out1 != out2
+
+    def test_set_param_changes_behavior(
+        self, client: TestClient, phasor_json: dict[str, Any]
+    ) -> None:
+        # Create session
+        resp = client.post(
+            "/api/simulate",
+            json={"graph": phasor_json, "n_samples": 16},
+        )
+        session_id = resp.json()["session_id"]
+
+        # Set frequency to a very different value
+        param_resp = client.post(
+            "/api/simulate/param",
+            json={"session_id": session_id, "name": "freq", "value": 10000.0},
+        )
+        assert param_resp.status_code == 200
+
+        # Continue and verify the output changed
+        resp_after = client.post(
+            "/api/simulate/continue",
+            json={"session_id": session_id, "n_samples": 16},
+        )
+        assert resp_after.status_code == 200
+
+    def test_reset_returns_to_initial_state(
+        self, client: TestClient, phasor_json: dict[str, Any]
+    ) -> None:
+        # Run initial simulation
+        resp1 = client.post(
+            "/api/simulate",
+            json={"graph": phasor_json, "n_samples": 16},
+        )
+        session_id = resp1.json()["session_id"]
+        initial_out = resp1.json()["outputs"]["out1"]
+
+        # Continue to advance state
+        client.post(
+            "/api/simulate/continue",
+            json={"session_id": session_id, "n_samples": 64},
+        )
+
+        # Reset
+        reset_resp = client.post(
+            "/api/simulate/reset",
+            json={"session_id": session_id},
+        )
+        assert reset_resp.status_code == 200
+
+        # Continue again -- should match initial output
+        resp_after = client.post(
+            "/api/simulate/continue",
+            json={"session_id": session_id, "n_samples": 16},
+        )
+        after_out = resp_after.json()["outputs"]["out1"]
+        assert initial_out == after_out
+
+    def test_invalid_session_returns_404(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/simulate/continue",
+            json={"session_id": "nonexistent", "n_samples": 16},
+        )
+        assert resp.status_code == 404
+
+    def test_set_param_invalid_name(self, client: TestClient, phasor_json: dict[str, Any]) -> None:
+        resp = client.post(
+            "/api/simulate",
+            json={"graph": phasor_json, "n_samples": 8},
+        )
+        session_id = resp.json()["session_id"]
+
+        param_resp = client.post(
+            "/api/simulate/param",
+            json={"session_id": session_id, "name": "nonexistent_param", "value": 1.0},
+        )
+        assert param_resp.status_code == 404

@@ -4,6 +4,8 @@ import type {
   SimulateResponse,
   OptimizeResponse,
   CompileResponse,
+  BuildResponse,
+  PeekResponse,
   ParseError,
   NodeTypeCatalog,
 } from "./types";
@@ -89,13 +91,55 @@ export async function simulateGraph(
   graph: Record<string, unknown>,
   nSamples: number,
   params?: Record<string, number>,
-  inputs?: Record<string, string>
+  inputs?: Record<string, string>,
+  sessionId?: string
 ): Promise<SimulateResponse> {
   return post<SimulateResponse>("/simulate", {
     graph,
     n_samples: nSamples,
     params,
     inputs,
+    session_id: sessionId,
+  });
+}
+
+export async function simulateContinue(
+  sessionId: string,
+  nSamples: number,
+  inputs?: Record<string, string>
+): Promise<SimulateResponse> {
+  return post<SimulateResponse>("/simulate/continue", {
+    session_id: sessionId,
+    n_samples: nSamples,
+    inputs,
+  });
+}
+
+export async function simulateSetParam(
+  sessionId: string,
+  name: string,
+  value: number
+): Promise<void> {
+  await post<{ status: string }>("/simulate/param", {
+    session_id: sessionId,
+    name,
+    value,
+  });
+}
+
+export async function simulatePeek(
+  sessionId: string
+): Promise<PeekResponse> {
+  return post<PeekResponse>("/simulate/peek", {
+    session_id: sessionId,
+  });
+}
+
+export async function simulateReset(
+  sessionId: string
+): Promise<void> {
+  await post<{ status: string }>("/simulate/reset", {
+    session_id: sessionId,
   });
 }
 
@@ -109,4 +153,32 @@ export async function compileGraph(
   graph: Record<string, unknown>
 ): Promise<CompileResponse> {
   return post<CompileResponse>("/compile", { graph });
+}
+
+export async function buildGraph(
+  graph: Record<string, unknown>,
+  platform: string
+): Promise<BuildResponse> {
+  return post<BuildResponse>("/build", { graph, platform });
+}
+
+export async function buildGraphZip(
+  graph: Record<string, unknown>,
+  platform: string
+): Promise<Blob> {
+  const resp = await fetch(`${BASE}/build/zip`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ graph, platform }),
+  });
+  if (!resp.ok) {
+    const detail = await resp.text();
+    throw new Error(`API error ${resp.status}: ${detail}`);
+  }
+  return resp.blob();
+}
+
+export async function getBuildPlatforms(): Promise<string[]> {
+  const data = await get<{ platforms: string[] }>("/build/platforms");
+  return data.platforms;
 }

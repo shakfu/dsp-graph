@@ -42,8 +42,15 @@ export function StatusBar() {
       )}
       {validationResult && (
         <span>
-          <span style={dotStyle(validOk ? "#28a745" : "#ffc107")} />
-          Valid: {validOk ? "Yes" : `${validationResult.errors.length} error(s)`}
+          <span style={dotStyle(validOk ? "#28a745" : "#dc3545")} />
+          Valid: {validOk ? "Yes" : (() => {
+            const errCount = validationResult.errors.filter((e) => e.severity === "error").length;
+            const warnCount = validationResult.errors.filter((e) => e.severity === "warning").length;
+            const parts: string[] = [];
+            if (errCount > 0) parts.push(`${errCount} error(s)`);
+            if (warnCount > 0) parts.push(`${warnCount} warning(s)`);
+            return parts.join(", ");
+          })()}
         </span>
       )}
       {nodes.length > 0 && (

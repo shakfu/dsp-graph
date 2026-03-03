@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from gen_dsp.graph.models import Graph, Node
-from gen_dsp.graph.validate import GraphValidationError, validate_graph
+from gen_dsp.graph.validate import validate_graph
 from gen_dsp.graph.visualize import graph_to_dot
 from pydantic import BaseModel, TypeAdapter
 
@@ -28,9 +28,17 @@ class LoadGdspRequest(BaseModel):
     source: str
 
 
+class ValidationErrorDetail(BaseModel):
+    message: str
+    kind: str
+    node_id: str | None = None
+    field_name: str | None = None
+    severity: str = "error"
+
+
 class ValidateResponse(BaseModel):
     valid: bool
-    errors: list[str]
+    errors: list[ValidationErrorDetail]
 
 
 class DotResponse(BaseModel):
@@ -53,16 +61,14 @@ async def load_gdsp(req: LoadGdspRequest) -> ReactFlowGraph:
     try:
         from gen_dsp.graph.dsl import GDSPSyntaxError, parse
     except ImportError as exc:
-        raise HTTPException(
-            status_code=501, detail="GDSP parser not available"
-        ) from exc
+        raise HTTPException(status_code=501, detail="GDSP parser not available") from exc
     try:
         g = parse(req.source)
     except GDSPSyntaxError as exc:
         # Extract raw message by stripping the "<file>:<line>:<col>: " prefix
         full = str(exc)
         prefix = f"{exc.filename}:{exc.line}:{exc.col}: "
-        msg = full[len(prefix):] if full.startswith(prefix) else full
+        msg = full[len(prefix) :] if full.startswith(prefix) else full
         raise HTTPException(
             status_code=422,
             detail={"message": msg, "line": exc.line, "col": exc.col},
@@ -78,11 +84,29 @@ async def validate(req: LoadJsonRequest) -> ValidateResponse:
     try:
         g = Graph.model_validate(req.graph)
     except Exception as exc:
-        return ValidateResponse(valid=False, errors=[str(exc)])
-    try:
-        validate_graph(g)
-    except GraphValidationError as exc:
-        return ValidateResponse(valid=False, errors=[str(exc)])
+        return ValidateResponse(
+            valid=False,
+            errors=[
+                ValidationErrorDetail(
+                    message=str(exc),
+                    kind="parse_error",
+                    severity="error",
+                )
+            ],
+        )
+    errs = validate_graph(g)
+    if errs:
+        details = [
+            ValidationErrorDetail(
+                message=str(e),
+                kind=e.kind,
+                node_id=e.node_id,
+                field_name=e.field_name,
+                severity=e.severity,
+            )
+            for e in errs
+        ]
+        return ValidateResponse(valid=False, errors=details)
     return ValidateResponse(valid=True, errors=[])
 
 
@@ -90,7 +114,7 @@ async def validate(req: LoadJsonRequest) -> ValidateResponse:
 async def export_json(rf: ReactFlowGraph) -> dict[str, Any]:
     """Convert a ReactFlowGraph back to a Graph JSON dict."""
     g = reactflow_to_graph(rf)
-    return g.model_dump()  # type: ignore[return-value]
+    return g.model_dump()
 
 
 _SKIP_CATALOG = {"AudioInput", "AudioOutput", "Graph", "Param", "Buffer"}

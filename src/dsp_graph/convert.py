@@ -327,9 +327,7 @@ def graph_to_reactflow(graph: Graph) -> ReactFlowGraph:
     # Edges from outputs
     for out in graph.outputs:
         if isinstance(out.source, str) and out.source in all_ids:
-            rf_edges.append(
-                RFEdge(id=f"e{edge_id}", source=out.source, target=out.id)
-            )
+            rf_edges.append(RFEdge(id=f"e{edge_id}", source=out.source, target=out.id))
             edge_id += 1
 
     return ReactFlowGraph(

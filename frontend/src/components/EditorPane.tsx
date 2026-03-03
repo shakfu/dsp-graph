@@ -88,10 +88,12 @@ export function EditorPane() {
           C++
         </button>
         <div style={{ flex: 1 }} />
-        {activeTab === "cpp" && (
-          <div style={{ display: "flex", gap: 4, paddingRight: 8 }}>
+        {activeTab === "gdsp" && (
+          <div style={{ paddingRight: 8 }}>
             <button
-              onClick={() => void runCompile()}
+              onClick={() => {
+                void runCompile().then(() => setActiveTab("cpp"));
+              }}
               disabled={nodes.length === 0}
               style={{
                 padding: "2px 10px",
@@ -107,22 +109,24 @@ export function EditorPane() {
             >
               Compile
             </button>
-            {compileResult && (
-              <button
-                onClick={handleCopy}
-                style={{
-                  padding: "2px 10px",
-                  fontSize: 11,
-                  background: "transparent",
-                  color: "#abb2bf",
-                  border: "1px solid #3e4451",
-                  borderRadius: 3,
-                  cursor: "pointer",
-                }}
-              >
-                Copy
-              </button>
-            )}
+          </div>
+        )}
+        {activeTab === "cpp" && compileResult && (
+          <div style={{ paddingRight: 8 }}>
+            <button
+              onClick={handleCopy}
+              style={{
+                padding: "2px 10px",
+                fontSize: 11,
+                background: "transparent",
+                color: "#abb2bf",
+                border: "1px solid #3e4451",
+                borderRadius: 3,
+                cursor: "pointer",
+              }}
+            >
+              Copy
+            </button>
           </div>
         )}
       </div>
