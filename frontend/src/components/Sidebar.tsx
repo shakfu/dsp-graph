@@ -142,9 +142,9 @@ export function Sidebar() {
 
         {activeTab === "tools" && (
           <>
+            <BuildPanel />
             <SimulationPanel />
             <OptimizePanel />
-            <BuildPanel />
             <LayoutPanel />
           </>
         )}

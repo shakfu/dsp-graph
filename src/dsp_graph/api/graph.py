@@ -13,6 +13,7 @@ from pydantic import BaseModel, TypeAdapter
 from dsp_graph.convert import (
     OP_COLORS,
     ReactFlowGraph,
+    graph_to_gdsp,
     graph_to_reactflow,
     reactflow_to_graph,
 )
@@ -110,11 +111,26 @@ async def validate(req: LoadJsonRequest) -> ValidateResponse:
     return ValidateResponse(valid=True, errors=[])
 
 
+class GdspResponse(BaseModel):
+    source: str
+
+
 @router.post("/export/json")
 async def export_json(rf: ReactFlowGraph) -> dict[str, Any]:
     """Convert a ReactFlowGraph back to a Graph JSON dict."""
     g = reactflow_to_graph(rf)
     return g.model_dump()
+
+
+@router.post("/export/gdsp", response_model=GdspResponse)
+async def export_gdsp(rf: ReactFlowGraph) -> GdspResponse:
+    """Convert a ReactFlowGraph to .gdsp DSL source."""
+    try:
+        g = reactflow_to_graph(rf)
+        source = graph_to_gdsp(g)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return GdspResponse(source=source)
 
 
 _SKIP_CATALOG = {"AudioInput", "AudioOutput", "Graph", "Param", "Buffer"}

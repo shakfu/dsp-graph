@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
-from gen_dsp.graph.models import Graph
+from gen_dsp.graph.dsl import parse
+from gen_dsp.graph.models import (
+    AudioInput,
+    AudioOutput,
+    BinOp,
+    Constant,
+    Graph,
+    NamedConstant,
+    Param,
+)
 
 from dsp_graph.convert import (
     INPUT_COLOR,
     OP_COLORS,
     OUTPUT_COLOR,
     PARAM_COLOR,
+    graph_to_gdsp,
     graph_to_reactflow,
     reactflow_to_graph,
 )
@@ -111,3 +121,101 @@ class TestColorMap:
         for op, color in OP_COLORS.items():
             assert color.startswith("#"), f"Color for {op} is not hex: {color}"
             assert len(color) == 7, f"Color for {op} has wrong length: {color}"
+
+
+class TestGraphToGdsp:
+    def test_phasor_roundtrip(self) -> None:
+        """Graph -> gdsp -> parse -> compare name, node count, output source."""
+        from gen_dsp.graph.models import AudioOutput, Phasor
+
+        # Use a name that doesn't shadow the builtin 'phasor' function
+        g = Graph(
+            name="phasor_test",
+            inputs=[],
+            outputs=[AudioOutput(id="out1", source="ph")],
+            params=[Param(name="freq", min=1.0, max=20000.0, default=440.0)],
+            nodes=[Phasor(id="ph", freq="freq")],
+        )
+        source = graph_to_gdsp(g)
+        g2 = parse(source)
+        assert g2.name == "phasor_test"
+        phasor_nodes = [n for n in g2.nodes if n.op == "phasor"]
+        assert len(phasor_nodes) == 1
+        assert len(g2.outputs) == len(g.outputs)
+
+    def test_stereo_gain_infix_ops(self, stereo_gain: Graph) -> None:
+        """BinOps with * produce valid .gdsp with infix syntax."""
+        source = graph_to_gdsp(stereo_gain)
+        assert "*" in source
+        # Should parse back successfully
+        g2 = parse(source)
+        assert g2.name == "stereo_gain"
+        assert len(g2.inputs) == 2
+        assert len(g2.outputs) == 2
+        mul_nodes = [n for n in g2.nodes if n.op == "mul"]
+        assert len(mul_nodes) == 2
+
+    def test_onepole_history_feedback(self, onepole: Graph) -> None:
+        """History feedback write appears after dependent nodes."""
+        source = graph_to_gdsp(onepole)
+        # The source should contain a history declaration
+        assert "history prev" in source
+        # And a feedback write: prev <- result (after processing)
+        assert "prev <- result" in source
+        # Should roundtrip successfully
+        g2 = parse(source)
+        assert g2.name == "onepole"
+        hist_nodes = [n for n in g2.nodes if n.op == "history"]
+        assert len(hist_nodes) == 1
+        assert hist_nodes[0].input == "result"
+
+    def test_constants_inlined(self) -> None:
+        """Constant nodes become inline literals, not separate assignments."""
+        g = Graph(
+            name="const_test",
+            inputs=[AudioInput(id="in1")],
+            outputs=[AudioOutput(id="out1", source="scaled")],
+            params=[],
+            nodes=[
+                Constant(id="c1", value=3.14),
+                BinOp(id="scaled", op="mul", a="in1", b="c1"),
+            ],
+        )
+        source = graph_to_gdsp(g)
+        # c1 should NOT appear as a separate assignment
+        assert "c1 =" not in source
+        # The literal value should be inlined
+        assert "3.14" in source
+        # Should parse back
+        g2 = parse(source)
+        assert g2.name == "const_test"
+
+    def test_named_constants(self) -> None:
+        """NamedConstant emits bare op name (pi, e, etc.)."""
+        g = Graph(
+            name="named_const_test",
+            inputs=[],
+            outputs=[AudioOutput(id="out1", source="result")],
+            params=[],
+            nodes=[
+                NamedConstant(id="my_pi", op="pi"),
+                BinOp(id="result", op="mul", a="my_pi", b=2.0),
+            ],
+        )
+        source = graph_to_gdsp(g)
+        assert "my_pi = pi" in source
+        # Should parse back
+        g2 = parse(source)
+        assert any(n.op == "pi" for n in g2.nodes)
+
+    def test_param_declaration(self, stereo_gain: Graph) -> None:
+        """min/max/default round-trip correctly."""
+        source = graph_to_gdsp(stereo_gain)
+        assert "param gain 0..2 = 1" in source
+        g2 = parse(source)
+        assert len(g2.params) == 1
+        p = g2.params[0]
+        assert p.name == "gain"
+        assert p.min == 0.0
+        assert p.max == 2.0
+        assert p.default == 1.0

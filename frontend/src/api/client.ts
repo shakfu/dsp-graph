@@ -5,6 +5,7 @@ import type {
   OptimizeResponse,
   CompileResponse,
   BuildResponse,
+  CompileBuildResponse,
   PeekResponse,
   ParseError,
   NodeTypeCatalog,
@@ -76,6 +77,12 @@ export async function exportGraphJson(
   rf: ReactFlowGraph
 ): Promise<Record<string, unknown>> {
   return post<Record<string, unknown>>("/graph/export/json", rf);
+}
+
+export async function exportGraphGdsp(
+  rf: ReactFlowGraph
+): Promise<{ source: string }> {
+  return post<{ source: string }>("/graph/export/gdsp", rf);
 }
 
 export async function getNodeTypes(): Promise<{
@@ -167,6 +174,29 @@ export async function buildGraphZip(
   platform: string
 ): Promise<Blob> {
   const resp = await fetch(`${BASE}/build/zip`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ graph, platform }),
+  });
+  if (!resp.ok) {
+    const detail = await resp.text();
+    throw new Error(`API error ${resp.status}: ${detail}`);
+  }
+  return resp.blob();
+}
+
+export async function compileBuild(
+  graph: Record<string, unknown>,
+  platform: string
+): Promise<CompileBuildResponse> {
+  return post<CompileBuildResponse>("/build/compile", { graph, platform });
+}
+
+export async function downloadBuiltBinary(
+  graph: Record<string, unknown>,
+  platform: string
+): Promise<Blob> {
+  const resp = await fetch(`${BASE}/build/binary`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ graph, platform }),

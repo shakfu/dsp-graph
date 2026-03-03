@@ -12,6 +12,7 @@ from gen_dsp.graph.models import (
     Node,
     Param,
 )
+from gen_dsp.graph.serialize import graph_to_gdsp
 from gen_dsp.graph.toposort import toposort
 from pydantic import BaseModel, TypeAdapter
 
@@ -386,3 +387,11 @@ def reactflow_to_graph(rf: ReactFlowGraph) -> Graph:
         params=params,
         nodes=nodes,
     )
+
+
+# ---------------------------------------------------------------------------
+# Graph -> .gdsp source
+# ---------------------------------------------------------------------------
+
+# Re-export graph_to_gdsp from gen-dsp for backward compatibility
+__all__ = ["graph_to_gdsp"]

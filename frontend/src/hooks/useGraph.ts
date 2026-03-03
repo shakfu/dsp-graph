@@ -6,6 +6,7 @@ import type {
   OptimizeResponse,
   CompileResponse,
   BuildResponse,
+  CompileBuildResponse,
   ValidateResponse,
   ValidationErrorDetail,
   InputSignalType,
@@ -16,6 +17,7 @@ import {
   loadGraphJson,
   loadGraphGdsp,
   exportGraphJson,
+  exportGraphGdsp,
   simulateGraph,
   simulateContinue,
   simulateSetParam,
@@ -25,6 +27,8 @@ import {
   compileGraph,
   buildGraph,
   buildGraphZip,
+  compileBuild,
+  downloadBuiltBinary,
   getBuildPlatforms,
   validateGraph,
   getNodeTypes,
@@ -46,6 +50,7 @@ interface GraphState {
   optimizeResult: OptimizeResponse | null;
   compileResult: CompileResponse | null;
   buildResult: BuildResponse | null;
+  compileBuildResult: CompileBuildResponse | null;
   buildPlatforms: string[];
   validationResult: ValidateResponse | null;
   validationErrors: ValidationErrorDetail[];
@@ -74,6 +79,7 @@ interface GraphState {
   loadFromJson: (json: Record<string, unknown>) => Promise<void>;
   loadFromGdsp: (source: string) => Promise<void>;
   exportJson: () => Promise<Record<string, unknown> | null>;
+  exportGdsp: () => Promise<string | null>;
   runSimulation: (nSamples: number) => Promise<void>;
   continueSimulation: (nSamples: number) => Promise<void>;
   setSimParam: (name: string, value: number) => Promise<void>;
@@ -82,7 +88,9 @@ interface GraphState {
   runOptimize: () => Promise<void>;
   runCompile: () => Promise<void>;
   runBuild: (platform: string) => Promise<void>;
+  runCompileBuild: (platform: string) => Promise<void>;
   downloadBuildZip: (platform: string) => Promise<void>;
+  downloadBuiltBinary: (platform: string) => Promise<void>;
   fetchBuildPlatforms: () => Promise<void>;
   runValidate: () => Promise<void>;
   setLayoutOptions: (opts: Partial<ElkLayoutOptions>) => void;
@@ -148,6 +156,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   optimizeResult: null,
   compileResult: null,
   buildResult: null,
+  compileBuildResult: null,
   buildPlatforms: [],
   validationResult: null,
   validationErrors: [],
@@ -243,6 +252,35 @@ export const useGraph = create<GraphState>((set, get) => ({
         control_interval: 0,
       };
       return await exportGraphJson(rf);
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  },
+
+  exportGdsp: async () => {
+    const { nodes, edges, graphName } = get();
+    try {
+      const rf = {
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          type: n.type ?? "dsp_node",
+          position: n.position,
+          data: n.data as RFNodeData,
+        })),
+        edges: edges.map((e) => ({
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          animated: e.animated ?? false,
+          label: typeof e.label === "string" ? e.label : undefined,
+        })),
+        name: graphName,
+        sample_rate: 44100,
+        control_interval: 0,
+      };
+      const result = await exportGraphGdsp(rf);
+      return result.source;
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
       return null;
@@ -350,6 +388,35 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
+  runCompileBuild: async (platform) => {
+    const exported = await get().exportJson();
+    if (!exported) return;
+    try {
+      const result = await compileBuild(exported, platform);
+      set({ compileBuildResult: result, error: null });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  downloadBuiltBinary: async (platform) => {
+    const exported = await get().exportJson();
+    if (!exported) return;
+    try {
+      const blob = await downloadBuiltBinary(exported, platform);
+      const result = get().compileBuildResult;
+      const filename = result?.output_file || `${get().graphName || "graph"}_${platform}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
   fetchBuildPlatforms: async () => {
     try {
       const platforms = await getBuildPlatforms();
@@ -413,6 +480,11 @@ export const useGraph = create<GraphState>((set, get) => ({
         optimizeResult: result,
         error: null,
       });
+      // Sync editor with optimized graph source
+      const gdspSource = await get().exportGdsp();
+      if (gdspSource) {
+        set({ gdspSource });
+      }
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }

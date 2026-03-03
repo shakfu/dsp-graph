@@ -84,6 +84,27 @@ class TestExport:
         assert len(exported["inputs"]) == 2
         assert len(exported["outputs"]) == 2
 
+    def test_export_gdsp_roundtrip(
+        self, client: TestClient, stereo_gain_json: dict[str, Any]
+    ) -> None:
+        """Load JSON -> ReactFlow -> export gdsp -> reload -> verify node count."""
+        # Load to get ReactFlow
+        load_resp = client.post("/api/graph/load/json", json={"graph": stereo_gain_json})
+        assert load_resp.status_code == 200
+        rf = load_resp.json()
+        # Export to .gdsp source
+        gdsp_resp = client.post("/api/graph/export/gdsp", json=rf)
+        assert gdsp_resp.status_code == 200
+        source = gdsp_resp.json()["source"]
+        assert "graph stereo_gain" in source
+        # Re-parse the .gdsp to get ReactFlow again
+        reload_resp = client.post("/api/graph/load/gdsp", json={"source": source})
+        assert reload_resp.status_code == 200
+        reloaded = reload_resp.json()
+        # Original had 7 RF nodes (2 in + 2 out + 1 param + 2 mul)
+        # Re-parsed should have same structure
+        assert len(reloaded["nodes"]) == len(rf["nodes"])
+
 
 class TestNodeTypes:
     def test_node_types_catalog(self, client: TestClient) -> None:

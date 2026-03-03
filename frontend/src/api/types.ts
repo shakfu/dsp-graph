@@ -89,4 +89,12 @@ export interface NodeTypeInfo {
   color: string;
 }
 
+export interface CompileBuildResponse {
+  success: boolean;
+  platform: string;
+  stdout: string;
+  stderr: string;
+  output_file: string | null;
+}
+
 export type NodeTypeCatalog = Record<string, NodeTypeInfo>;

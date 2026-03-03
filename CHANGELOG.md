@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Binary plugin compilation**: `POST /api/build/compile` compiles a graph to a binary plugin (`.clap`, `.vst3`, `.component`, etc.) using gen-dsp's `ProjectGenerator` and `Builder`. Returns success/failure status, stdout/stderr build logs, and output filename. `POST /api/build/binary` returns the compiled binary as a download.
+- **OS-filtered platform list**: `GET /build/platforms` now returns only platforms available on the host OS (e.g. macOS omits daisy/circle; Linux omits au/max; Windows returns only clap/sc/vst3).
+- **Build output UI in BuildPanel**: success/failure status line (green/red), collapsible stdout/stderr build log, and "Download Binary" button on successful builds.
+- Tests: `TestCompileBuild` (invalid platform, invalid graph, valid build with cmake skip) and `test_platforms_os_filtered` (verifies OS-specific platform filtering).
+
+### Changed
+
+- **BuildPanel renamed to Plugin Target**: section header "Build Plugin" -> "Plugin Target", "Build" button -> "Generate", status text "Built for" -> "Generated for". New "Build" button triggers actual binary compilation.
+- **Plugin Target moved to top of Tools tab**: BuildPanel is now the first section in the sidebar Tools tab (above Simulation, Optimize, Layout).
+- **Platform dropdown defaults to first available**: instead of hardcoding "clap", the dropdown defaults to the first platform returned by the OS-filtered backend endpoint.
+- **numpy is now a core dependency**: moved from optional `[sim]` extra to main `dependencies`. Removed the `[sim]` install group and updated all documentation and error messages accordingly.
+
 - **DSL editor with live graph rendering**: CodeMirror 6 editor pane with 300ms-debounced live preview. Type .gdsp, see the graph update in real-time. AbortController cancels stale requests; re-layout only triggers when node topology changes.
 - **Custom .gdsp syntax highlighting**: StreamLanguage tokenizer with keyword, builtin, number, comment (`#`), string, and operator recognition. All ~130 node ops highlighted as builtins; `graph`, `param`, `in`, `out`, `buffer`, etc. as keywords.
 - **C++ compile tab**: editor pane tab showing compiled C++ output with full syntax highlighting via `@codemirror/lang-cpp`. Compile and Copy buttons in the tab header.

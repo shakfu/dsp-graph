@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import io
+import shutil
 import zipfile
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
+
+_has_cmake = shutil.which("cmake") is not None
 
 
 class TestBuild:
@@ -81,6 +85,65 @@ class TestPlatforms:
         assert resp.status_code == 200
         data = resp.json()
         assert "platforms" in data
+        # clap and vst3 are available on all OSes
         assert "clap" in data["platforms"]
         assert "vst3" in data["platforms"]
-        assert len(data["platforms"]) >= 11
+        # Filtered by host OS: macOS=9, Linux=11, Windows=3
+        assert len(data["platforms"]) >= 3
+
+    def test_platforms_os_filtered(self, client: TestClient) -> None:
+        """Platforms list should exclude platforms unavailable on the host OS."""
+        import platform as plat
+
+        resp = client.get("/api/build/platforms")
+        data = resp.json()
+        platforms = data["platforms"]
+        if plat.system() == "Darwin":
+            # macOS-only: au, max present; linux-only: daisy, circle absent
+            assert "au" in platforms
+            assert "max" in platforms
+            assert "daisy" not in platforms
+            assert "circle" not in platforms
+        elif plat.system() == "Linux":
+            # linux-only: daisy, circle present; macOS-only: au, max absent
+            assert "daisy" in platforms
+            assert "circle" in platforms
+            assert "au" not in platforms
+            assert "max" not in platforms
+
+
+class TestCompileBuild:
+    def test_compile_build_invalid_platform(
+        self, client: TestClient, stereo_gain_json: dict[str, Any]
+    ) -> None:
+        resp = client.post(
+            "/api/build/compile",
+            json={"graph": stereo_gain_json, "platform": "nonexistent"},
+        )
+        assert resp.status_code == 422
+        assert "nonexistent" in resp.json()["detail"]
+
+    def test_compile_build_invalid_graph(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/build/compile",
+            json={
+                "graph": {"name": "bad", "nodes": [{"op": "nonexistent_op"}]},
+                "platform": "clap",
+            },
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.skipif(not _has_cmake, reason="cmake not available")
+    def test_compile_build_valid_graph(
+        self, client: TestClient, stereo_gain_json: dict[str, Any]
+    ) -> None:
+        resp = client.post(
+            "/api/build/compile",
+            json={"graph": stereo_gain_json, "platform": "clap"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["platform"] == "clap"
+        assert isinstance(data["success"], bool)
+        assert isinstance(data["stdout"], str)
+        assert isinstance(data["stderr"], str)

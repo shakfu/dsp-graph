@@ -31,16 +31,13 @@ dependencies = [
     "gen-dsp[graph]>=0.1.14",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
+    "numpy>=1.24",
 ]
-
-[project.optional-dependencies]
-sim = ["numpy>=1.24"]
 
 [dependency-groups]
 dev = [
     "httpx>=0.28.0",
     "mypy>=1.19.1",
-    "numpy>=1.24",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.15.0",
@@ -53,6 +50,9 @@ dsp-graph = "dsp_graph.cli:main"
 Homepage = "https://github.com/shakfu/dsp-graph"
 Repository = "https://github.com/shakfu/dsp-graph"
 Issues = "https://github.com/shakfu/dsp-graph/issues"
+
+[tool.uv.sources]
+gen-dsp = { path = "../gen-dsp", editable = true }
 
 [build-system]
 requires = ["uv_build>=0.10.2,<0.11.0"]

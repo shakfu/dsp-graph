@@ -131,7 +131,7 @@ async def simulate(req: SimulateRequest) -> SimulateResponse:
     except ImportError as exc:
         raise HTTPException(
             status_code=501,
-            detail="Simulation requires numpy: pip install gen-dsp[sim]",
+            detail="Simulation requires numpy: pip install dsp-graph",
         ) from exc
 
     try:
@@ -177,7 +177,7 @@ async def simulate_continue(req: ContinueRequest) -> SimulateResponse:
     except ImportError as exc:
         raise HTTPException(
             status_code=501,
-            detail="Simulation requires numpy: pip install gen-dsp[sim]",
+            detail="Simulation requires numpy: pip install dsp-graph",
         ) from exc
 
     state, graph = _get_session(req.session_id)

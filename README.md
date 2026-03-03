@@ -25,12 +25,6 @@ dsp-graph provides a web UI (React + React Flow) backed by a Python server (Fast
 pip install dsp-graph
 ```
 
-For simulation support:
-
-```bash
-pip install dsp-graph[sim]
-```
-
 ## Quick Start
 
 ```bash

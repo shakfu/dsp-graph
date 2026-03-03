@@ -15,11 +15,13 @@
 JSON) to a deployable plugin project. Supported platforms: au, chuck, circle,
 clap, daisy, lv2, max, pd, sc, vcvrack, vst3. This is the core value chain:
 author a DSP graph in the editor, then build it into a real plugin.
-- [ ] Backend `/api/build` endpoint: accept graph + platform, run `compile_for_gen_dsp()`,
-      return a zip containing DSP C++ + adapter C++ + manifest.json + CMakeLists.txt
-- [ ] Frontend "Build" panel: platform selector dropdown + "Build for CLAP/VST3/Max/..." button
-- [ ] Show build artifacts in a new editor tab (adapter C++, manifest, build file)
-- [ ] Download zip of the complete plugin project
+- [x] Backend `/api/build` endpoint: generate DSP C++ + adapter C++ + manifest
+- [x] Frontend "Plugin Target" panel: platform selector + "Generate" button
+- [x] Show generated artifacts (DSP C++, adapter, manifest) in panel
+- [x] Download zip of the complete plugin project
+- [x] Backend `/api/build/compile` endpoint: binary compilation via `Builder`
+- [x] Backend `/api/build/binary` endpoint: download compiled binary
+- [x] Frontend build output UI: success/failure status, collapsible logs, download binary
 - [ ] Batch build: generate for multiple platforms at once
 
 ### Stateful / streaming simulation
@@ -39,7 +41,7 @@ after each call.
 - [ ] Delete edges via click or context menu
 - [ ] Duplicate selected node(s)
 - [ ] Undo/redo stack for all graph mutations
-- [ ] Bidirectional sync: canvas edits update .gdsp source in editor
+- [x] Bidirectional sync: canvas edits update .gdsp source in editor
 
 ---
 
@@ -71,11 +73,14 @@ auto-detects promotable nodes.
 - [ ] "Promote to control rate" action with visual feedback
 
 ### Import / export
-- [ ] Copy graph to clipboard as .gdsp source
+- [x] Copy graph to clipboard as .gdsp source
 - [ ] Download generated C++ as a file
 - [ ] Drag-and-drop file loading (drop JSON/.gdsp onto canvas)
 - [ ] PNG export (raster alternative to SVG)
 - [ ] DOT/PDF export button (uses `graph_to_dot_file()` for Graphviz rendering)
+
+> **Note:** `graph_to_gdsp()` is currently implemented in dsp-graph (`convert.py`) as a
+> stopgap. Upstream to `gen_dsp.graph.dsl` when the interface stabilizes.
 
 ---
 
