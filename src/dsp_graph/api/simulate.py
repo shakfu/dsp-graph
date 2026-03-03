@@ -61,6 +61,21 @@ class SessionRequest(BaseModel):
     session_id: str
 
 
+class BufferGetRequest(BaseModel):
+    session_id: str
+    buffer_id: str
+
+
+class BufferGetResponse(BaseModel):
+    data: list[float]
+
+
+class BufferSetRequest(BaseModel):
+    session_id: str
+    buffer_id: str
+    data: list[float]
+
+
 class PeekResponse(BaseModel):
     values: dict[str, float]
 
@@ -235,4 +250,32 @@ async def simulate_reset(req: SessionRequest) -> dict[str, str]:
     """Reset simulation state to initial values."""
     state, _ = _get_session(req.session_id)
     state.reset()
+    return {"status": "ok"}
+
+
+@router.post("/simulate/buffer/get", response_model=BufferGetResponse)
+async def buffer_get(req: BufferGetRequest) -> BufferGetResponse:
+    """Get the contents of a buffer from a simulation session."""
+    import numpy as np
+
+    state, _ = _get_session(req.session_id)
+    try:
+        buf = state.get_buffer(req.buffer_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if isinstance(buf, np.ndarray):
+        return BufferGetResponse(data=buf.tolist())
+    return BufferGetResponse(data=list(buf))
+
+
+@router.post("/simulate/buffer/set")
+async def buffer_set(req: BufferSetRequest) -> dict[str, str]:
+    """Set the contents of a buffer in a simulation session."""
+    import numpy as np
+
+    state, _ = _get_session(req.session_id)
+    try:
+        state.set_buffer(req.buffer_id, np.array(req.data, dtype=np.float32))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"status": "ok"}

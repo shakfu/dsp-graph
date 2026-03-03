@@ -112,6 +112,46 @@ class TestPlatforms:
             assert "max" not in platforms
 
 
+class TestBatchBuild:
+    @pytest.mark.skipif(not _has_cmake, reason="cmake not available")
+    def test_batch_build_multiple_platforms(
+        self, client: TestClient, stereo_gain_json: dict[str, Any]
+    ) -> None:
+        resp = client.post(
+            "/api/build/batch",
+            json={"graph": stereo_gain_json, "platforms": ["clap", "vst3"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "results" in data
+        assert len(data["results"]) == 2
+        platforms_returned = {r["platform"] for r in data["results"]}
+        assert platforms_returned == {"clap", "vst3"}
+
+    def test_batch_build_invalid_platform_included(
+        self, client: TestClient, stereo_gain_json: dict[str, Any]
+    ) -> None:
+        resp = client.post(
+            "/api/build/batch",
+            json={"graph": stereo_gain_json, "platforms": ["nonexistent"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["results"]) == 1
+        assert data["results"][0]["success"] is False
+        assert "nonexistent" in data["results"][0]["stderr"]
+
+    def test_batch_build_invalid_graph(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/build/batch",
+            json={
+                "graph": {"name": "bad", "nodes": [{"op": "nonexistent_op"}]},
+                "platforms": ["clap"],
+            },
+        )
+        assert resp.status_code == 422
+
+
 class TestCompileBuild:
     def test_compile_build_invalid_platform(
         self, client: TestClient, stereo_gain_json: dict[str, Any]

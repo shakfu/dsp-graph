@@ -205,3 +205,93 @@ class TestStatefulSimulation:
             json={"session_id": session_id, "name": "nonexistent_param", "value": 1.0},
         )
         assert param_resp.status_code == 404
+
+
+class TestBufferEndpoints:
+    def test_buffer_get(self, client: TestClient, buffer_graph_json: dict[str, Any]) -> None:
+        # Create session
+        resp = client.post(
+            "/api/simulate",
+            json={"graph": buffer_graph_json, "n_samples": 8},
+        )
+        assert resp.status_code == 200
+        session_id = resp.json()["session_id"]
+
+        # Get buffer contents
+        buf_resp = client.post(
+            "/api/simulate/buffer/get",
+            json={"session_id": session_id, "buffer_id": "mybuf"},
+        )
+        assert buf_resp.status_code == 200
+        data = buf_resp.json()
+        assert "data" in data
+        assert isinstance(data["data"], list)
+        assert len(data["data"]) == 16
+
+    def test_buffer_set_and_get_roundtrip(
+        self, client: TestClient, buffer_graph_json: dict[str, Any]
+    ) -> None:
+        # Create session
+        resp = client.post(
+            "/api/simulate",
+            json={"graph": buffer_graph_json, "n_samples": 8},
+        )
+        session_id = resp.json()["session_id"]
+
+        # Set buffer with known values
+        test_data = [
+            1.0,
+            2.0,
+            3.0,
+            4.0,
+            5.0,
+            6.0,
+            7.0,
+            8.0,
+            9.0,
+            10.0,
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+        ]
+        set_resp = client.post(
+            "/api/simulate/buffer/set",
+            json={"session_id": session_id, "buffer_id": "mybuf", "data": test_data},
+        )
+        assert set_resp.status_code == 200
+        assert set_resp.json()["status"] == "ok"
+
+        # Get buffer and verify round-trip
+        get_resp = client.post(
+            "/api/simulate/buffer/get",
+            json={"session_id": session_id, "buffer_id": "mybuf"},
+        )
+        assert get_resp.status_code == 200
+        got_data = get_resp.json()["data"]
+        for expected, actual in zip(test_data, got_data):
+            assert abs(expected - actual) < 1e-5
+
+    def test_buffer_get_invalid_session(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/simulate/buffer/get",
+            json={"session_id": "nonexistent", "buffer_id": "mybuf"},
+        )
+        assert resp.status_code == 404
+
+    def test_buffer_get_invalid_buffer_id(
+        self, client: TestClient, buffer_graph_json: dict[str, Any]
+    ) -> None:
+        resp = client.post(
+            "/api/simulate",
+            json={"graph": buffer_graph_json, "n_samples": 8},
+        )
+        session_id = resp.json()["session_id"]
+
+        buf_resp = client.post(
+            "/api/simulate/buffer/get",
+            json={"session_id": session_id, "buffer_id": "nonexistent"},
+        )
+        assert buf_resp.status_code == 404

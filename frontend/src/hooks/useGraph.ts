@@ -23,6 +23,7 @@ import {
   simulateSetParam,
   simulatePeek,
   simulateReset,
+  getBuffer,
   optimizeGraph,
   compileGraph,
   buildGraph,
@@ -30,6 +31,7 @@ import {
   compileBuild,
   downloadBuiltBinary,
   getBuildPlatforms,
+  batchBuild,
   validateGraph,
   getNodeTypes,
 } from "../api/client";
@@ -38,6 +40,13 @@ import {
   DEFAULT_LAYOUT_OPTIONS,
   type ElkLayoutOptions,
 } from "../utils/elkLayout";
+
+interface UndoSnapshot {
+  nodes: Node<RFNodeData>[];
+  edges: Edge[];
+}
+
+const MAX_UNDO = 50;
 
 interface GraphState {
   nodes: Node<RFNodeData>[];
@@ -56,6 +65,8 @@ interface GraphState {
   validationErrors: ValidationErrorDetail[];
   errorNodeIds: Set<string>;
   warnNodeIds: Set<string>;
+  cycleNodeIds: Set<string>;
+  accumulatedOutputs: Record<string, number[]>;
   layoutOptions: ElkLayoutOptions;
   exportSvg: (() => Promise<void>) | null;
   inputSignals: Record<string, InputSignalType>;
@@ -84,6 +95,8 @@ interface GraphState {
   continueSimulation: (nSamples: number) => Promise<void>;
   setSimParam: (name: string, value: number) => Promise<void>;
   fetchPeek: () => Promise<void>;
+  fetchBuffer: (bufferId: string) => Promise<void>;
+  bufferData: Record<string, number[]>;
   resetSimulation: () => Promise<void>;
   runOptimize: () => Promise<void>;
   runCompile: () => Promise<void>;
@@ -92,7 +105,10 @@ interface GraphState {
   downloadBuildZip: (platform: string) => Promise<void>;
   downloadBuiltBinary: (platform: string) => Promise<void>;
   fetchBuildPlatforms: () => Promise<void>;
+  batchBuildResults: CompileBuildResponse[];
+  runBatchBuild: (platforms: string[]) => Promise<void>;
   runValidate: () => Promise<void>;
+  layoutVersion: number;
   setLayoutOptions: (opts: Partial<ElkLayoutOptions>) => void;
   runLayout: () => Promise<void>;
   clearError: () => void;
@@ -102,6 +118,15 @@ interface GraphState {
   setShowEditor: (show: boolean) => void;
   setShowGraph: (show: boolean) => void;
   fetchNodeTypes: () => Promise<void>;
+
+  // Undo/redo
+  undoStack: UndoSnapshot[];
+  redoStack: UndoSnapshot[];
+  pushUndo: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 
   // Graph editing
   addNode: (op: string, position: { x: number; y: number }) => void;
@@ -153,15 +178,20 @@ export const useGraph = create<GraphState>((set, get) => ({
   simulationResult: null,
   simSessionId: null,
   peekValues: null,
+  bufferData: {},
   optimizeResult: null,
   compileResult: null,
   buildResult: null,
   compileBuildResult: null,
   buildPlatforms: [],
+  batchBuildResults: [],
   validationResult: null,
   validationErrors: [],
   errorNodeIds: new Set<string>(),
   warnNodeIds: new Set<string>(),
+  cycleNodeIds: new Set<string>(),
+  accumulatedOutputs: {},
+  layoutVersion: 0,
   layoutOptions: { ...DEFAULT_LAYOUT_OPTIONS },
   exportSvg: null,
   inputSignals: {},
@@ -172,6 +202,10 @@ export const useGraph = create<GraphState>((set, get) => ({
   showEditor: true,
   showGraph: true,
   nodeTypeCatalog: null,
+  undoStack: [],
+  redoStack: [],
+  canUndo: false,
+  canRedo: false,
 
   setExportSvg: (fn) => set({ exportSvg: fn }),
   setNodes: (nodes) => set({ nodes }),
@@ -297,6 +331,7 @@ export const useGraph = create<GraphState>((set, get) => ({
       set({
         simulationResult: result,
         simSessionId: result.session_id,
+        accumulatedOutputs: { ...result.outputs },
         peekValues: null,
         error: null,
       });
@@ -312,7 +347,12 @@ export const useGraph = create<GraphState>((set, get) => ({
       const signals = get().inputSignals;
       const inputs = Object.keys(signals).length > 0 ? signals : undefined;
       const result = await simulateContinue(sessionId, nSamples, inputs);
-      set({ simulationResult: result, error: null });
+      const prev = get().accumulatedOutputs;
+      const acc: Record<string, number[]> = {};
+      for (const [key, samples] of Object.entries(result.outputs)) {
+        acc[key] = [...(prev[key] ?? []), ...samples];
+      }
+      set({ simulationResult: result, accumulatedOutputs: acc, error: null });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -339,12 +379,25 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
+  fetchBuffer: async (bufferId) => {
+    const sessionId = get().simSessionId;
+    if (!sessionId) return;
+    try {
+      const result = await getBuffer(sessionId, bufferId);
+      set((s) => ({
+        bufferData: { ...s.bufferData, [bufferId]: result.data },
+      }));
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
   resetSimulation: async () => {
     const sessionId = get().simSessionId;
     if (!sessionId) return;
     try {
       await simulateReset(sessionId);
-      set({ simulationResult: null, peekValues: null });
+      set({ simulationResult: null, accumulatedOutputs: {}, peekValues: null });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -417,6 +470,17 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
+  runBatchBuild: async (platforms) => {
+    const exported = await get().exportJson();
+    if (!exported) return;
+    try {
+      const result = await batchBuild(exported, platforms);
+      set({ batchBuildResults: result.results, error: null });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
   fetchBuildPlatforms: async () => {
     try {
       const platforms = await getBuildPlatforms();
@@ -434,6 +498,7 @@ export const useGraph = create<GraphState>((set, get) => ({
       const errors = result.errors;
       const errorIds = new Set<string>();
       const warnIds = new Set<string>();
+      const cycleIds = new Set<string>();
       for (const e of errors) {
         if (e.node_id) {
           if (e.severity === "warning") {
@@ -442,12 +507,18 @@ export const useGraph = create<GraphState>((set, get) => ({
             errorIds.add(e.node_id);
           }
         }
+        if (e.cycle_node_ids) {
+          for (const cid of e.cycle_node_ids) {
+            cycleIds.add(cid);
+          }
+        }
       }
       set({
         validationResult: result,
         validationErrors: errors,
         errorNodeIds: errorIds,
         warnNodeIds: warnIds,
+        cycleNodeIds: cycleIds,
         error: null,
       });
     } catch (e) {
@@ -463,7 +534,7 @@ export const useGraph = create<GraphState>((set, get) => ({
     if (nodes.length === 0) return;
     try {
       const laid = await elkLayout(nodes, edges, layoutOptions);
-      set({ nodes: laid, error: null });
+      set((s) => ({ nodes: laid, layoutVersion: s.layoutVersion + 1, error: null }));
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -499,9 +570,49 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
+  pushUndo: () => {
+    const { nodes, edges, undoStack } = get();
+    const snapshot: UndoSnapshot = { nodes: [...nodes], edges: [...edges] };
+    const newStack = [...undoStack, snapshot].slice(-MAX_UNDO);
+    set({ undoStack: newStack, redoStack: [], canUndo: true, canRedo: false });
+  },
+
+  undo: () => {
+    const { undoStack, nodes, edges } = get();
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1]!;
+    const newUndoStack = undoStack.slice(0, -1);
+    const currentSnapshot: UndoSnapshot = { nodes: [...nodes], edges: [...edges] };
+    set((s) => ({
+      nodes: prev.nodes,
+      edges: prev.edges,
+      undoStack: newUndoStack,
+      redoStack: [...s.redoStack, currentSnapshot],
+      canUndo: newUndoStack.length > 0,
+      canRedo: true,
+    }));
+  },
+
+  redo: () => {
+    const { redoStack, nodes, edges } = get();
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1]!;
+    const newRedoStack = redoStack.slice(0, -1);
+    const currentSnapshot: UndoSnapshot = { nodes: [...nodes], edges: [...edges] };
+    set((s) => ({
+      nodes: next.nodes,
+      edges: next.edges,
+      redoStack: newRedoStack,
+      undoStack: [...s.undoStack, currentSnapshot],
+      canUndo: true,
+      canRedo: newRedoStack.length > 0,
+    }));
+  },
+
   addNode: (op, position) => {
     const catalog = get().nodeTypeCatalog;
     if (!catalog || !catalog[op]) return;
+    get().pushUndo();
     const info = catalog[op];
     const id = `${op}_${Date.now().toString(36)}`;
     // Build default node_data from catalog fields
@@ -526,6 +637,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   },
 
   deleteNodes: (ids) => {
+    get().pushUndo();
     const idSet = new Set(ids);
     set((s) => ({
       nodes: s.nodes.filter((n) => !idSet.has(n.id)),
@@ -535,6 +647,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   },
 
   deleteEdges: (ids) => {
+    get().pushUndo();
     const idSet = new Set(ids);
     set((s) => ({
       edges: s.edges.filter((e) => !idSet.has(e.id)),
@@ -542,12 +655,14 @@ export const useGraph = create<GraphState>((set, get) => ({
   },
 
   addEdge: (source, target) => {
+    get().pushUndo();
     const id = `e_${source}_${target}_${Date.now().toString(36)}`;
     const newEdge: Edge = { id, source, target };
     set((s) => ({ edges: [...s.edges, newEdge] }));
   },
 
   duplicateNodes: (ids) => {
+    get().pushUndo();
     const { nodes } = get();
     const toDuplicate = nodes.filter((n) => ids.includes(n.id));
     const newNodes = toDuplicate.map((n) => {

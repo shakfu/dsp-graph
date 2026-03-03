@@ -150,6 +150,28 @@ export async function simulateReset(
   });
 }
 
+export async function getBuffer(
+  sessionId: string,
+  bufferId: string
+): Promise<{ data: number[] }> {
+  return post<{ data: number[] }>("/simulate/buffer/get", {
+    session_id: sessionId,
+    buffer_id: bufferId,
+  });
+}
+
+export async function setBuffer(
+  sessionId: string,
+  bufferId: string,
+  data: number[]
+): Promise<void> {
+  await post<{ status: string }>("/simulate/buffer/set", {
+    session_id: sessionId,
+    buffer_id: bufferId,
+    data,
+  });
+}
+
 export async function optimizeGraph(
   graph: Record<string, unknown>
 ): Promise<OptimizeResponse> {
@@ -211,4 +233,14 @@ export async function downloadBuiltBinary(
 export async function getBuildPlatforms(): Promise<string[]> {
   const data = await get<{ platforms: string[] }>("/build/platforms");
   return data.platforms;
+}
+
+export async function batchBuild(
+  graph: Record<string, unknown>,
+  platforms: string[]
+): Promise<{ results: CompileBuildResponse[] }> {
+  return post<{ results: CompileBuildResponse[] }>("/build/batch", {
+    graph,
+    platforms,
+  });
 }

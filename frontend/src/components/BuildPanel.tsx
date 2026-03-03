@@ -35,8 +35,10 @@ export function BuildPanel() {
   const buildResult = useGraph((s) => s.buildResult);
   const compileBuildResult = useGraph((s) => s.compileBuildResult);
   const buildPlatforms = useGraph((s) => s.buildPlatforms);
+  const batchBuildResults = useGraph((s) => s.batchBuildResults);
   const runBuild = useGraph((s) => s.runBuild);
   const runCompileBuild = useGraph((s) => s.runCompileBuild);
+  const runBatchBuild = useGraph((s) => s.runBatchBuild);
   const downloadBuildZip = useGraph((s) => s.downloadBuildZip);
   const downloadBuiltBinary = useGraph((s) => s.downloadBuiltBinary);
   const fetchBuildPlatforms = useGraph((s) => s.fetchBuildPlatforms);
@@ -44,6 +46,7 @@ export function BuildPanel() {
   const [platform, setPlatform] = useState("");
   const [showOutput, setShowOutput] = useState<"dsp" | "adapter" | "manifest" | null>(null);
   const [showBuildLog, setShowBuildLog] = useState(false);
+  const [batchLoading, setBatchLoading] = useState(false);
 
   useEffect(() => {
     if (buildPlatforms.length === 0) {
@@ -60,6 +63,15 @@ export function BuildPanel() {
 
   if (nodes.length === 0) return null;
 
+  const handleBatchBuild = async () => {
+    setBatchLoading(true);
+    try {
+      await runBatchBuild(buildPlatforms);
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
   return (
     <div>
       <h4 style={{ margin: "0 0 8px", fontSize: 13 }}>Plugin Target</h4>
@@ -75,7 +87,7 @@ export function BuildPanel() {
           ))}
         </select>
       </div>
-      <div style={{ display: "flex", gap: 6 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <button style={buttonStyle} onClick={() => void runBuild(platform)}>
           Generate
         </button>
@@ -84,6 +96,13 @@ export function BuildPanel() {
         </button>
         <button style={buttonStyle} onClick={() => void runCompileBuild(platform)}>
           Build
+        </button>
+        <button
+          style={buttonStyle}
+          onClick={() => void handleBatchBuild()}
+          disabled={batchLoading}
+        >
+          {batchLoading ? "Building..." : "Build All"}
         </button>
       </div>
       {buildResult && (
@@ -186,6 +205,43 @@ export function BuildPanel() {
               Download Binary
             </button>
           )}
+        </div>
+      )}
+      {batchBuildResults.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: "#666", marginBottom: 4, fontWeight: 600 }}>
+            Batch Build Results
+          </div>
+          <table style={{ fontSize: 11, borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: "2px 6px", borderBottom: "1px solid #ddd" }}>
+                  Platform
+                </th>
+                <th style={{ textAlign: "left", padding: "2px 6px", borderBottom: "1px solid #ddd" }}>
+                  Status
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {batchBuildResults.map((r) => (
+                <tr key={r.platform}>
+                  <td style={{ padding: "2px 6px", fontFamily: "monospace" }}>
+                    {r.platform.toUpperCase()}
+                  </td>
+                  <td
+                    style={{
+                      padding: "2px 6px",
+                      color: r.success ? "#2e7d32" : "#c62828",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {r.success ? "OK" : "FAIL"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

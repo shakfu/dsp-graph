@@ -10,6 +10,7 @@ from gen_dsp.graph.models import (
     AudioInput,
     AudioOutput,
     BinOp,
+    Buffer,
     Graph,
     History,
     Param,
@@ -72,6 +73,25 @@ def phasor_graph() -> Graph:
             Phasor(id="ph", freq="freq"),
         ],
     )
+
+
+@pytest.fixture
+def buffer_graph() -> Graph:
+    """Graph with a Buffer node for buffer endpoint testing."""
+    return Graph(
+        name="buffer_test",
+        inputs=[AudioInput(id="in1")],
+        outputs=[AudioOutput(id="out1", source="pass")],
+        nodes=[
+            Buffer(id="mybuf", size=16),
+            BinOp(id="pass", op="add", a="in1", b=0.0),
+        ],
+    )
+
+
+@pytest.fixture
+def buffer_graph_json(buffer_graph: Graph) -> dict[str, Any]:
+    return buffer_graph.model_dump()
 
 
 @pytest.fixture

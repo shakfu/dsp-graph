@@ -175,6 +175,54 @@ def _compile_build(g: Graph, platform: str) -> tuple[CompileBuildResponse, Path 
         raise
 
 
+class BatchBuildRequest(BaseModel):
+    graph: dict[str, Any]
+    platforms: list[str]
+
+
+class BatchBuildResponse(BaseModel):
+    results: list[CompileBuildResponse]
+
+
+@router.post("/build/batch", response_model=BatchBuildResponse)
+async def batch_build(req: BatchBuildRequest) -> BatchBuildResponse:
+    """Build for multiple platforms at once."""
+    try:
+        g = Graph.model_validate(req.graph)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    results: list[CompileBuildResponse] = []
+    for plat in req.platforms:
+        if plat not in SUPPORTED_PLATFORMS:
+            results.append(
+                CompileBuildResponse(
+                    success=False,
+                    platform=plat,
+                    stdout="",
+                    stderr=f"Unsupported platform: {plat!r}",
+                    output_file=None,
+                )
+            )
+            continue
+        try:
+            resp, tmpdir = _compile_build(g, plat)
+            if tmpdir is not None:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+            results.append(resp)
+        except Exception as exc:
+            results.append(
+                CompileBuildResponse(
+                    success=False,
+                    platform=plat,
+                    stdout="",
+                    stderr=str(exc),
+                    output_file=None,
+                )
+            )
+    return BatchBuildResponse(results=results)
+
+
 @router.post("/build/compile", response_model=CompileBuildResponse)
 async def compile_build(req: BuildRequest) -> CompileBuildResponse:
     """Compile a Graph to a binary plugin via gen-dsp's Builder."""

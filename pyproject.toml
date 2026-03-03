@@ -28,7 +28,7 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "gen-dsp[graph]>=0.1.14",
+    "gen-dsp[graph]>=0.1.15",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "numpy>=1.24",
@@ -50,9 +50,6 @@ dsp-graph = "dsp_graph.cli:main"
 Homepage = "https://github.com/shakfu/dsp-graph"
 Repository = "https://github.com/shakfu/dsp-graph"
 Issues = "https://github.com/shakfu/dsp-graph/issues"
-
-[tool.uv.sources]
-gen-dsp = { path = "../gen-dsp", editable = true }
 
 [build-system]
 requires = ["uv_build>=0.10.2,<0.11.0"]

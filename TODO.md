@@ -5,10 +5,10 @@
 ### Structured validation errors with per-node highlighting
 `GraphValidationError` exposes `.kind`, `.node_id`, `.field_name`, `.severity` but
 `/api/graph/validate` only returns `str(error)`, discarding all structured metadata.
-- [ ] Return structured error fields from the validate endpoint
-- [ ] Highlight invalid nodes on the canvas (red/yellow border by severity)
-- [ ] Validation panel with click-to-select-node navigation
-- [ ] Cycle detection visualization: highlight feedback loops on the canvas
+- [x] Return structured error fields from the validate endpoint
+- [x] Highlight invalid nodes on the canvas (red/yellow border by severity)
+- [x] Validation panel with click-to-select-node navigation
+- [x] Cycle detection visualization: highlight feedback loops on the canvas
 
 ### Build to plugin targets (11 platforms)
 `gen_dsp.graph.adapter` provides the full build pipeline from a graph (.gdsp or
@@ -22,25 +22,25 @@ author a DSP graph in the editor, then build it into a real plugin.
 - [x] Backend `/api/build/compile` endpoint: binary compilation via `Builder`
 - [x] Backend `/api/build/binary` endpoint: download compiled binary
 - [x] Frontend build output UI: success/failure status, collapsible logs, download binary
-- [ ] Batch build: generate for multiple platforms at once
+- [x] Batch build: generate for multiple platforms at once
 
 ### Stateful / streaming simulation
 `SimState` persists across `simulate()` calls and supports `get_param()`/`set_param()`,
 `get_buffer()`/`set_buffer()`, `get_peek()`, `reset()`. Currently state is discarded
 after each call.
-- [ ] Real-time parameter sliders that feed into live re-simulation
-- [ ] Streaming mode: "step N more samples" without resetting state
-- [ ] Buffer waveform display (inspect/load buffer contents)
-- [ ] Peek node values shown as overlays on the canvas
-- [ ] Waveform display (oscilloscope-style) for simulation output
-- [ ] Frequency-domain view (FFT/spectrum) alongside time-domain output
+- [x] Real-time parameter sliders that feed into live re-simulation
+- [x] Streaming mode: "step N more samples" without resetting state
+- [x] Buffer waveform display (inspect/load buffer contents)
+- [x] Peek node values shown as overlays on the canvas
+- [x] Waveform display (oscilloscope-style) for simulation output
+- [x] Frequency-domain view (FFT/spectrum) alongside time-domain output
 
 ### Graph editing on canvas
-- [ ] Add/delete nodes (node palette or context menu, driven by node catalog)
-- [ ] Draw edges between ports by dragging from source handle to target handle
-- [ ] Delete edges via click or context menu
-- [ ] Duplicate selected node(s)
-- [ ] Undo/redo stack for all graph mutations
+- [x] Add/delete nodes (node palette or context menu, driven by node catalog)
+- [x] Draw edges between ports by dragging from source handle to target handle
+- [x] Delete edges via click or context menu
+- [x] Duplicate selected node(s)
+- [x] Undo/redo stack for all graph mutations
 - [x] Bidirectional sync: canvas edits update .gdsp source in editor
 
 ---

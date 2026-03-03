@@ -1,6 +1,5 @@
 import {
   ReactFlow,
-  MiniMap,
   Controls,
   Background,
   BackgroundVariant,
@@ -11,7 +10,7 @@ import {
 } from "@xyflow/react";
 import type { Node, Connection } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useEffect, useCallback, useMemo, useState, useRef } from "react";
+import { useEffect, useCallback, useMemo, useState, useRef, useLayoutEffect } from "react";
 import { toSvg } from "html-to-image";
 import { useGraph } from "../hooks/useGraph";
 import type { RFNodeData, NodeTypeCatalog } from "../api/types";
@@ -165,15 +164,22 @@ export function GraphCanvas() {
   const direction = useGraph((s) => s.layoutOptions.direction);
   const errorNodeIds = useGraph((s) => s.errorNodeIds);
   const warnNodeIds = useGraph((s) => s.warnNodeIds);
+  const cycleNodeIds = useGraph((s) => s.cycleNodeIds);
   const peekValues = useGraph((s) => s.peekValues);
+  const layoutVersion = useGraph((s) => s.layoutVersion);
   const nodeTypeCatalog = useGraph((s) => s.nodeTypeCatalog);
   const addNodeToGraph = useGraph((s) => s.addNode);
   const deleteNodes = useGraph((s) => s.deleteNodes);
   const deleteEdges = useGraph((s) => s.deleteEdges);
   const addEdgeToGraph = useGraph((s) => s.addEdge);
   const duplicateNodes = useGraph((s) => s.duplicateNodes);
+  const undo = useGraph((s) => s.undo);
+  const redo = useGraph((s) => s.redo);
 
   const { fitView, getViewport, screenToFlowPosition } = useReactFlow();
+  const fitViewRef = useRef(fitView);
+  useLayoutEffect(() => { fitViewRef.current = fitView; }, [fitView]);
+
   const [nodes, setNodes, onNodesChange] = useNodesState(storeNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(storeEdges);
 
@@ -183,11 +189,21 @@ export function GraphCanvas() {
   // Apply validation error styling and peek badges to nodes
   const styledNodes = useMemo(() => {
     const hasErrors = errorNodeIds.size > 0 || warnNodeIds.size > 0;
+    const hasCycle = cycleNodeIds.size > 0;
     const hasPeek = peekValues && Object.keys(peekValues).length > 0;
-    if (!hasErrors && !hasPeek) return nodes;
+    if (!hasErrors && !hasCycle && !hasPeek) return nodes;
     return nodes.map((n) => {
       let updated = n;
-      if (errorNodeIds.has(n.id)) {
+      if (cycleNodeIds.has(n.id)) {
+        updated = {
+          ...updated,
+          style: {
+            ...updated.style,
+            outline: "2px dashed #9c27b0",
+            outlineOffset: 2,
+          },
+        };
+      } else if (errorNodeIds.has(n.id)) {
         updated = { ...updated, style: { ...updated.style, outline: "2px solid #dc3545", outlineOffset: 1 } };
       } else if (warnNodeIds.has(n.id)) {
         updated = { ...updated, style: { ...updated.style, outline: "2px solid #ffc107", outlineOffset: 1 } };
@@ -200,18 +216,49 @@ export function GraphCanvas() {
       }
       return updated;
     });
-  }, [nodes, errorNodeIds, warnNodeIds, peekValues]);
+  }, [nodes, errorNodeIds, warnNodeIds, cycleNodeIds, peekValues]);
 
+  // Highlight edges between cycle nodes
+  const styledEdges = useMemo(() => {
+    if (cycleNodeIds.size === 0) return edges;
+    return edges.map((e) => {
+      if (cycleNodeIds.has(e.source) && cycleNodeIds.has(e.target)) {
+        return {
+          ...e,
+          animated: true,
+          style: { stroke: "#9c27b0", strokeWidth: 2 },
+        };
+      }
+      return e;
+    });
+  }, [edges, cycleNodeIds]);
+
+  // Stable topology key: fitView only when the set of node IDs changes,
+  // not on position/style updates or the local->store->local feedback loop.
+  const topologyKey = useMemo(
+    () => storeNodes.map((n) => n.id).sort().join(","),
+    [storeNodes]
+  );
+
+  // Sync store -> local React Flow state
   useEffect(() => {
     setNodes(storeNodes);
-    // fitView after a tick so React Flow has measured the new nodes
-    requestAnimationFrame(() => fitView());
-  }, [storeNodes, setNodes, fitView]);
+  }, [storeNodes, setNodes]);
 
   useEffect(() => {
     setEdges(storeEdges);
   }, [storeEdges, setEdges]);
 
+  // fitView on topology change (nodes added/removed) or after layout.
+  // Double-rAF ensures React Flow has rendered and measured the new nodes
+  // before we try to fit.
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => fitViewRef.current());
+    });
+  }, [topologyKey, layoutVersion]);
+
+  // Sync local React Flow state -> store (drag positions, selections, etc.)
   useEffect(() => {
     setStoreNodes(nodes as Node<RFNodeData>[]);
   }, [nodes, setStoreNodes]);
@@ -319,6 +366,17 @@ export function GraphCanvas() {
   // Keyboard delete
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
+      // Undo/Redo: Cmd+Z / Cmd+Shift+Z
+      if ((event.metaKey || event.ctrlKey) && event.key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+        return;
+      }
+
       if (event.key === "Delete" || event.key === "Backspace") {
         // Don't intercept if focused on an input element
         const tag = (event.target as HTMLElement).tagName;
@@ -338,7 +396,7 @@ export function GraphCanvas() {
         closeContextMenu();
       }
     },
-    [nodes, edges, deleteNodes, deleteEdges, closeContextMenu]
+    [nodes, edges, deleteNodes, deleteEdges, closeContextMenu, undo, redo]
   );
 
   const handleAddNode = useCallback(
@@ -365,7 +423,7 @@ export function GraphCanvas() {
       <div style={{ width: "100%", height: "100%" }} onKeyDown={onKeyDown} tabIndex={-1}>
         <ReactFlow
           nodes={styledNodes}
-          edges={edges}
+          edges={styledEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -389,7 +447,6 @@ export function GraphCanvas() {
         >
           <HandlePositionUpdater nodeIds={nodeIds} direction={direction} />
           <Controls />
-          <MiniMap />
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         </ReactFlow>
 

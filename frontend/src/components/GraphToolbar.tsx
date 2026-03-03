@@ -32,6 +32,10 @@ export function GraphToolbar() {
   const isLivePreview = useGraph((s) => s.isLivePreview);
   const setLivePreview = useGraph((s) => s.setLivePreview);
   const setGdspSource = useGraph((s) => s.setGdspSource);
+  const undo = useGraph((s) => s.undo);
+  const redo = useGraph((s) => s.redo);
+  const canUndo = useGraph((s) => s.canUndo);
+  const canRedo = useGraph((s) => s.canRedo);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const handleFileLoad = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,6 +118,25 @@ export function GraphToolbar() {
           Parse
         </button>
       )}
+      <div
+        style={{ width: 1, height: 20, background: "#ddd", margin: "0 4px" }}
+      />
+      <button
+        style={{ ...buttonStyle, opacity: canUndo ? 1 : 0.4 }}
+        onClick={undo}
+        disabled={!canUndo}
+        title="Undo (Cmd+Z)"
+      >
+        Undo
+      </button>
+      <button
+        style={{ ...buttonStyle, opacity: canRedo ? 1 : 0.4 }}
+        onClick={redo}
+        disabled={!canRedo}
+        title="Redo (Cmd+Shift+Z)"
+      >
+        Redo
+      </button>
       <div
         style={{ width: 1, height: 20, background: "#ddd", margin: "0 4px" }}
       />

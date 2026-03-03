@@ -35,6 +35,7 @@ class ValidationErrorDetail(BaseModel):
     node_id: str | None = None
     field_name: str | None = None
     severity: str = "error"
+    cycle_node_ids: list[str] | None = None
 
 
 class ValidateResponse(BaseModel):
@@ -97,16 +98,26 @@ async def validate(req: LoadJsonRequest) -> ValidateResponse:
         )
     errs = validate_graph(g)
     if errs:
-        details = [
-            ValidationErrorDetail(
-                message=str(e),
-                kind=e.kind,
-                node_id=e.node_id,
-                field_name=e.field_name,
-                severity=e.severity,
+        details: list[ValidationErrorDetail] = []
+        for e in errs:
+            cycle_ids: list[str] | None = None
+            if e.kind == "cycle":
+                # Parse "Graph contains a cycle through nodes: a, b, c"
+                msg = str(e)
+                marker = "nodes: "
+                idx = msg.find(marker)
+                if idx >= 0:
+                    cycle_ids = [nid.strip() for nid in msg[idx + len(marker) :].split(",")]
+            details.append(
+                ValidationErrorDetail(
+                    message=str(e),
+                    kind=e.kind,
+                    node_id=e.node_id,
+                    field_name=e.field_name,
+                    severity=e.severity,
+                    cycle_node_ids=cycle_ids,
+                )
             )
-            for e in errs
-        ]
         return ValidateResponse(valid=False, errors=details)
     return ValidateResponse(valid=True, errors=[])
 

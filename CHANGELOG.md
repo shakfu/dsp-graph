@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Cycle detection visualization**: validation endpoint returns `cycle_node_ids` on cycle errors. Cycle nodes are highlighted with a dashed purple border on the canvas; edges between cycle nodes are animated with purple stroke.
+- **Waveform display (oscilloscope)**: new `WaveformDisplay` canvas component for time-domain output visualization. Auto-scaling amplitude, center line, dB labels. Output data accumulates across `continue` calls for a full-session view.
+- **FFT/spectrum view**: new `SpectrumDisplay` canvas component with client-side radix-2 FFT (no external deps). Magnitude spectrum plot with -80..0 dB range. Toggle between Time and Freq views in SimulationPanel.
+- **Buffer get/set endpoints**: `POST /simulate/buffer/get` and `POST /simulate/buffer/set` for inspecting and modifying buffer contents in a simulation session. Buffer nodes show a "View" button in SimulationPanel that fetches and renders contents via WaveformDisplay.
+- **Undo/redo stack**: snapshot-based undo/redo for all graph mutations (add/delete/duplicate nodes, add/delete edges). Capped at 50 entries. Toolbar buttons with disabled state. Keyboard shortcuts: Cmd+Z (undo), Cmd+Shift+Z (redo).
+- **Batch build**: `POST /api/build/batch` accepts `{graph, platforms[]}` and returns per-platform build results. "Build All" button in BuildPanel with summary table (platform | status). Per-platform errors handled gracefully (no short-circuit).
+- Tests: `TestBufferEndpoints` (get, set/get roundtrip, invalid session, invalid buffer ID), `TestBatchBuild` (multi-platform, invalid platform, invalid graph).
+
+### Changed
+
+- **Simulation output auto-displays**: waveform (time-domain) view now defaults to visible after running simulation, instead of requiring a manual toggle.
+
+### Fixed
+
+- **Canvas fitView no longer fires on unrelated store updates**: `fitView` previously re-triggered on every React re-render (e.g. simulation results, peek values) because `useReactFlow().fitView` has an unstable identity. Now uses a ref for the latest `fitView` and a topology key (sorted node IDs) so `fitView` only fires when nodes are actually added/removed/reloaded -- not on position changes from dragging or unrelated state updates.
+- **Buffer node filter**: fixed `op === "buf"` to `op === "buffer"` matching the gen-dsp model.
+
 - **Binary plugin compilation**: `POST /api/build/compile` compiles a graph to a binary plugin (`.clap`, `.vst3`, `.component`, etc.) using gen-dsp's `ProjectGenerator` and `Builder`. Returns success/failure status, stdout/stderr build logs, and output filename. `POST /api/build/binary` returns the compiled binary as a download.
 - **OS-filtered platform list**: `GET /build/platforms` now returns only platforms available on the host OS (e.g. macOS omits daisy/circle; Linux omits au/max; Windows returns only clap/sc/vst3).
 - **Build output UI in BuildPanel**: success/failure status line (green/red), collapsible stdout/stderr build log, and "Download Binary" button on successful builds.

@@ -35,6 +35,7 @@ export interface ValidationErrorDetail {
   node_id: string | null;
   field_name: string | null;
   severity: string;
+  cycle_node_ids: string[] | null;
 }
 
 export interface ValidateResponse {

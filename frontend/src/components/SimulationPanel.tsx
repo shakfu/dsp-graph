@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useGraph } from "../hooks/useGraph";
+import { WaveformDisplay } from "./WaveformDisplay";
+import { SpectrumDisplay } from "./SpectrumDisplay";
 import type { InputSignalType } from "../api/types";
 
 const buttonStyle: React.CSSProperties = {
@@ -9,6 +11,13 @@ const buttonStyle: React.CSSProperties = {
   borderRadius: 4,
   background: "#fff",
   cursor: "pointer",
+};
+
+const activeButtonStyle: React.CSSProperties = {
+  ...buttonStyle,
+  background: "#0d6efd",
+  color: "#fff",
+  borderColor: "#0d6efd",
 };
 
 const selectStyle: React.CSSProperties = {
@@ -64,6 +73,8 @@ function ParamSlider({
   );
 }
 
+type DisplayMode = "none" | "time" | "freq";
+
 export function SimulationPanel() {
   const runSimulation = useGraph((s) => s.runSimulation);
   const continueSimulation = useGraph((s) => s.continueSimulation);
@@ -72,15 +83,25 @@ export function SimulationPanel() {
   const fetchPeek = useGraph((s) => s.fetchPeek);
   const nodes = useGraph((s) => s.nodes);
   const simSessionId = useGraph((s) => s.simSessionId);
+  const simulationResult = useGraph((s) => s.simulationResult);
+  const accumulatedOutputs = useGraph((s) => s.accumulatedOutputs);
   const peekValues = useGraph((s) => s.peekValues);
+  const bufferData = useGraph((s) => s.bufferData);
+  const fetchBuffer = useGraph((s) => s.fetchBuffer);
   const inputSignals = useGraph((s) => s.inputSignals);
   const setInputSignal = useGraph((s) => s.setInputSignal);
   const [nSamples, setNSamples] = useState(64);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("time");
 
   if (nodes.length === 0) return null;
 
   const inputNodes = nodes.filter((n) => n.type === "input");
   const paramNodes = nodes.filter((n) => n.type === "param");
+  const bufferNodes = nodes.filter((n) => n.data.op === "buffer");
+
+  const outputKeys = simulationResult
+    ? Object.keys(simulationResult.outputs)
+    : [];
 
   return (
     <div style={{ marginTop: 16, borderTop: "1px solid #ddd", paddingTop: 12 }}>
@@ -181,6 +202,78 @@ export function SimulationPanel() {
                   {id}: {val.toFixed(6)}
                 </div>
               ))}
+            </div>
+          )}
+
+          {bufferNodes.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>
+                Buffers:
+              </div>
+              {bufferNodes.map((node) => (
+                <div key={node.id} style={{ marginBottom: 4 }}>
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <span style={{ fontSize: 11, fontFamily: "monospace" }}>{node.id}</span>
+                    <button
+                      style={{ ...buttonStyle, fontSize: 10, padding: "2px 6px" }}
+                      onClick={() => void fetchBuffer(node.id)}
+                    >
+                      View
+                    </button>
+                  </div>
+                  {bufferData[node.id] != null && (
+                    <WaveformDisplay
+                      data={bufferData[node.id]!}
+                      label={`${node.id} buffer`}
+                      width={260}
+                      height={60}
+                      color="#ff9800"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {outputKeys.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>
+                Output display:
+              </div>
+              <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                <button
+                  style={displayMode === "time" ? activeButtonStyle : buttonStyle}
+                  onClick={() => setDisplayMode(displayMode === "time" ? "none" : "time")}
+                >
+                  Time
+                </button>
+                <button
+                  style={displayMode === "freq" ? activeButtonStyle : buttonStyle}
+                  onClick={() => setDisplayMode(displayMode === "freq" ? "none" : "freq")}
+                >
+                  Freq
+                </button>
+              </div>
+              {displayMode === "time" &&
+                outputKeys.map((key) => (
+                  <WaveformDisplay
+                    key={key}
+                    data={accumulatedOutputs[key] ?? []}
+                    label={key}
+                    width={260}
+                    height={80}
+                  />
+                ))}
+              {displayMode === "freq" &&
+                outputKeys.map((key) => (
+                  <SpectrumDisplay
+                    key={key}
+                    data={accumulatedOutputs[key] ?? []}
+                    label={key}
+                    width={260}
+                    height={80}
+                  />
+                ))}
             </div>
           )}
         </div>
