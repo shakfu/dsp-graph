@@ -26,7 +26,6 @@ export function NodeCatalog() {
   const catalog = useGraph((s) => s.nodeTypeCatalog);
   const fetchNodeTypes = useGraph((s) => s.fetchNodeTypes);
   const [filter, setFilter] = useState("");
-  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (!catalog) void fetchNodeTypes();
@@ -53,104 +52,100 @@ export function NodeCatalog() {
     return result;
   }, [groups, filter, catalog]);
 
-  if (!catalog) return null;
+  if (!catalog) {
+    return (
+      <div style={{ fontSize: 12, color: "#999", padding: 8 }}>
+        Loading node catalog...
+      </div>
+    );
+  }
 
   return (
-    <div style={{ marginTop: 12, borderTop: "1px solid #ddd", paddingTop: 12 }}>
-      <h4
-        style={{ margin: "0 0 8px", fontSize: 13, cursor: "pointer" }}
-        onClick={() => setExpanded(!expanded)}
-      >
-        Node Catalog {expanded ? "[-]" : "[+]"}
-      </h4>
-      {expanded && (
-        <>
-          <input
-            type="text"
-            placeholder="Filter nodes..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+    <div>
+      <input
+        type="text"
+        placeholder="Filter nodes..."
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        style={{
+          width: "100%",
+          padding: "4px 8px",
+          fontSize: 12,
+          border: "1px solid #ccc",
+          borderRadius: 4,
+          marginBottom: 8,
+          boxSizing: "border-box",
+        }}
+      />
+      {Object.entries(filtered).map(([category, ops]) => (
+        <div key={category} style={{ marginBottom: 10 }}>
+          <div
             style={{
-              width: "100%",
-              padding: "4px 8px",
-              fontSize: 12,
-              border: "1px solid #ccc",
-              borderRadius: 4,
-              marginBottom: 8,
-              boxSizing: "border-box",
+              fontSize: 11,
+              fontWeight: 600,
+              color: "#666",
+              textTransform: "uppercase",
+              marginBottom: 4,
             }}
-          />
-          {Object.entries(filtered).map(([category, ops]) => (
-            <div key={category} style={{ marginBottom: 10 }}>
+          >
+            {category}
+          </div>
+          {ops.map((op) => {
+            const info = catalog![op];
+            if (!info) return null;
+            return (
               <div
+                key={op}
                 style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: "#666",
-                  textTransform: "uppercase",
-                  marginBottom: 4,
+                  padding: "4px 8px",
+                  marginBottom: 2,
+                  borderRadius: 3,
+                  background: "#fff",
+                  border: "1px solid #eee",
+                  fontSize: 12,
                 }}
               >
-                {category}
-              </div>
-              {ops.map((op) => {
-                const info = catalog![op];
-                if (!info) return null;
-                return (
-                  <div
-                    key={op}
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span
                     style={{
-                      padding: "4px 8px",
-                      marginBottom: 2,
-                      borderRadius: 3,
-                      background: "#fff",
-                      border: "1px solid #eee",
-                      fontSize: 12,
+                      display: "inline-block",
+                      width: 10,
+                      height: 10,
+                      borderRadius: 2,
+                      background: info.color,
+                      border: "1px solid #ccc",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <strong>{op}</strong>
+                  <span style={{ fontSize: 10, color: "#999" }}>
+                    {info.class}
+                  </span>
+                </div>
+                {Object.keys(info.fields).length > 0 && (
+                  <div
+                    style={{
+                      marginTop: 2,
+                      fontSize: 10,
+                      color: "#666",
+                      paddingLeft: 16,
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: 10,
-                          height: 10,
-                          borderRadius: 2,
-                          background: info.color,
-                          border: "1px solid #ccc",
-                          flexShrink: 0,
-                        }}
-                      />
-                      <strong>{op}</strong>
-                      <span style={{ fontSize: 10, color: "#999" }}>
-                        {info.class}
+                    {Object.entries(info.fields).map(([fname, finfo]) => (
+                      <span key={fname} style={{ marginRight: 8 }}>
+                        <code>{fname}</code>
+                        {!finfo.required && (
+                          <span style={{ color: "#999" }}>?</span>
+                        )}
                       </span>
-                    </div>
-                    {Object.keys(info.fields).length > 0 && (
-                      <div
-                        style={{
-                          marginTop: 2,
-                          fontSize: 10,
-                          color: "#666",
-                          paddingLeft: 16,
-                        }}
-                      >
-                        {Object.entries(info.fields).map(([fname, finfo]) => (
-                          <span key={fname} style={{ marginRight: 8 }}>
-                            <code>{fname}</code>
-                            {!finfo.required && (
-                              <span style={{ color: "#999" }}>?</span>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          ))}
-        </>
-      )}
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
