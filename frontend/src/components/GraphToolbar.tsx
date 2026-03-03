@@ -27,6 +27,8 @@ export function GraphToolbar() {
   const clearError = useGraph((s) => s.clearError);
   const showEditor = useGraph((s) => s.showEditor);
   const setShowEditor = useGraph((s) => s.setShowEditor);
+  const showGraph = useGraph((s) => s.showGraph);
+  const setShowGraph = useGraph((s) => s.setShowGraph);
   const isLivePreview = useGraph((s) => s.isLivePreview);
   const setLivePreview = useGraph((s) => s.setLivePreview);
   const setGdspSource = useGraph((s) => s.setGdspSource);
@@ -94,6 +96,12 @@ export function GraphToolbar() {
         onClick={() => setShowEditor(!showEditor)}
       >
         Editor
+      </button>
+      <button
+        style={showGraph ? activeButtonStyle : buttonStyle}
+        onClick={() => setShowGraph(!showGraph)}
+      >
+        Graph
       </button>
       <button
         style={isLivePreview ? activeButtonStyle : buttonStyle}

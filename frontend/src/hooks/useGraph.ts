@@ -45,6 +45,7 @@ interface GraphState {
   parseError: ParseError | null;
   isLivePreview: boolean;
   showEditor: boolean;
+  showGraph: boolean;
 
   // Node catalog
   nodeTypeCatalog: NodeTypeCatalog | null;
@@ -68,6 +69,7 @@ interface GraphState {
   setParseError: (error: ParseError | null) => void;
   setLivePreview: (on: boolean) => void;
   setShowEditor: (show: boolean) => void;
+  setShowGraph: (show: boolean) => void;
   fetchNodeTypes: () => Promise<void>;
 }
 
@@ -122,6 +124,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   parseError: null,
   isLivePreview: true,
   showEditor: true,
+  showGraph: true,
   nodeTypeCatalog: null,
 
   setExportSvg: (fn) => set({ exportSvg: fn }),
@@ -135,6 +138,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   setParseError: (error) => set({ parseError: error }),
   setLivePreview: (on) => set({ isLivePreview: on }),
   setShowEditor: (show) => set({ showEditor: show }),
+  setShowGraph: (show) => set({ showGraph: show }),
 
   loadFromJson: async (json) => {
     try {

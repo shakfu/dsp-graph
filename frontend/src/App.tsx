@@ -53,6 +53,7 @@ function DividerHandle({
 
 export function App() {
   const showEditor = useGraph((s) => s.showEditor);
+  const showGraph = useGraph((s) => s.showGraph);
   const fetchNodeTypes = useGraph((s) => s.fetchNodeTypes);
 
   const [editorWidth, setEditorWidth] = useState(400);
@@ -72,15 +73,17 @@ export function App() {
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
           {showEditor && (
             <>
-              <div style={{ width: editorWidth, flexShrink: 0 }}>
+              <div style={showGraph ? { width: editorWidth, flexShrink: 0 } : { flex: 1 }}>
                 <EditorPane />
               </div>
-              <DividerHandle onDrag={handleDividerDrag} />
+              {showGraph && <DividerHandle onDrag={handleDividerDrag} />}
             </>
           )}
-          <div style={{ flex: 1, position: "relative" }}>
-            <GraphCanvas />
-          </div>
+          {showGraph && (
+            <div style={{ flex: 1, position: "relative" }}>
+              <GraphCanvas />
+            </div>
+          )}
           <Sidebar />
         </div>
         <StatusBar />
