@@ -28,7 +28,7 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "gen-dsp[graph] @ file:///Users/sa/projects/personal/gen-dsp",
+    "gen-dsp[graph]>=0.1.15",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "numpy>=1.24",
