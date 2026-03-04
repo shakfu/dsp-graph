@@ -1,5 +1,16 @@
 # TODO
 
+## Design decision: editor-primary
+
+The .gdsp text editor is the primary authoring surface. The canvas is a read-only
+visualization (topology, layout, validation overlays, simulation results) with
+click-to-select and go-to-definition bridging back to the editor. Bidirectional
+canvas editing was evaluated and descoped -- the cost of source transforms
+(especially expression rewriting for connect/disconnect) outweighs the benefit
+given that .gdsp is a concise textual DSL.
+
+---
+
 ## P0 -- High Impact
 
 ### Structured validation errors with per-node highlighting
@@ -36,16 +47,29 @@ after each call.
 - [x] Frequency-domain view (FFT/spectrum) alongside time-domain output
 
 ### Graph editing on canvas
+Canvas editing works for direct store manipulation. With the editor-primary
+decision, these remain functional but the .gdsp editor is the preferred
+authoring path. Canvas edits do not round-trip back to .gdsp source.
 - [x] Add/delete nodes (node palette or context menu, driven by node catalog)
 - [x] Draw edges between ports by dragging from source handle to target handle
 - [x] Delete edges via click or context menu
 - [x] Duplicate selected node(s)
 - [x] Undo/redo stack for all graph mutations
-- [x] Bidirectional sync: canvas edits update .gdsp source in editor
 
 ---
 
 ## P1 -- Medium Impact
+
+### Persistence
+Editor-primary workflow needs persistence -- losing source on refresh is painful.
+- [x] Auto-save/restore .gdsp source to browser localStorage
+
+### Import / export
+- [x] Copy graph to clipboard as .gdsp source
+- [x] Download generated C++ as a file
+- [x] Drag-and-drop file loading (drop JSON/.gdsp onto editor or canvas)
+- [ ] PNG export (raster alternative to SVG)
+- [ ] DOT/PDF export button (uses `graph_to_dot_file()` for Graphviz rendering)
 
 ### Individual optimization passes
 `constant_fold()`, `eliminate_cse()`, `eliminate_dead_nodes()`, `promote_control_rate()`
@@ -54,17 +78,30 @@ are available individually but only the all-in-one `optimize_graph()` is exposed
 - [ ] Step-through UI: apply one pass at a time, see before/after diff
 - [ ] Side-by-side diff view for C++ output before/after optimization
 
+### Structured DSL compile errors
+`GDSPCompileError` (semantic errors like "undefined function") is caught by the
+generic `except Exception`, losing `.line` and `.col`. Should get same structured
+treatment as `GDSPSyntaxError`. Directly improves the editor experience.
+
+### Multi-graph GDSP parsing and composition
+`parse_multi(source)` returns `dict[str, Graph]` from a single source file.
+Currently `parse()` silently discards all but the last graph. The .gdsp syntax
+already supports block diagram algebra (`>>` series, `//` parallel) and subgraph
+instantiation via function-call syntax. This section covers the UI support for
+multi-graph workflows.
+- [ ] Graph selector dropdown when a .gdsp defines multiple graphs
+- [ ] Subgraph library browsing from a multi-graph file
+- [ ] Autocomplete for graph names defined in the same file (for `>>`, `//`, call syntax)
+
+---
+
+## P2 -- Nice to Have
+
 ### Subgraph support
 `expand_subgraphs(graph)` recursively flattens all Subgraph nodes.
 - [ ] "Expand subgraph" context menu action on Subgraph nodes
 - [ ] Side-by-side nested vs flat graph view
 - [ ] Node grouping / subgraph collapse for large graphs
-
-### Multi-graph GDSP parsing
-`parse_multi(source)` returns `dict[str, Graph]` from a single source file.
-Currently `parse()` silently discards all but the last graph.
-- [ ] Graph selector dropdown when a .gdsp defines multiple graphs
-- [ ] Subgraph library browsing from a multi-graph file
 
 ### Control-rate node visualization
 `Graph.control_nodes` lists IDs running at control rate. `promote_control_rate()`
@@ -72,41 +109,14 @@ auto-detects promotable nodes.
 - [ ] Annotate nodes with audio-rate vs control-rate badge/style
 - [ ] "Promote to control rate" action with visual feedback
 
-### Import / export
-- [x] Copy graph to clipboard as .gdsp source
-- [ ] Download generated C++ as a file
-- [ ] Drag-and-drop file loading (drop JSON/.gdsp onto canvas)
-- [ ] PNG export (raster alternative to SVG)
-- [ ] DOT/PDF export button (uses `graph_to_dot_file()` for Graphviz rendering)
-
-> **Note:** `graph_to_gdsp()` is currently implemented in dsp-graph (`convert.py`) as a
-> stopgap. Upstream to `gen_dsp.graph.dsl` when the interface stabilizes.
-
----
-
-## P2 -- Nice to Have
-
 ### Forward dependency highlighting
 `build_forward_deps(graph)` returns `dict[str, set[str]]`.
 - [ ] Highlight all downstream dependents when a node is selected
 - [ ] "Select all connected" for subgraph extraction
 
-### Structured DSL compile errors
-`GDSPCompileError` (semantic errors like "undefined function") is caught by the
-generic `except Exception`, losing `.line` and `.col`. Should get same structured
-treatment as `GDSPSyntaxError`.
-
 ### Unmapped subgraph param warnings
 `validate_graph(graph, warn_unmapped_params=True)` is never called with the flag.
 Low-cost addition.
-
-### Block diagram algebra UI
-`series()`, `parallel()`, `split()`, `merge()` compose two graphs. Could enable
-drag-and-drop graph composition, but the interaction design is non-trivial.
-
-### Persistence & collaboration
-- [ ] Save/load graphs to browser localStorage or IndexedDB
-- [ ] Shareable URL encoding (graph state in URL hash or query param)
 
 ### UX polish
 - [ ] Keyboard shortcuts (delete node, fit view, export, undo)
@@ -136,3 +146,8 @@ drag-and-drop graph composition, but the interaction design is non-trivial.
 - [x] Status bar with parse/validation status
 - [x] Auto-validation after live preview parse
 - [x] Compile endpoint + tests
+- [x] Editor: autocomplete (keywords, builtins, named constants, node IDs)
+- [x] Editor: inline error markers (squiggly underlines at parse error line/col)
+- [x] Editor: bracket matching for `{}` and `()`
+- [x] Editor: snippets (`graph {}`, `param`, `in`, `out`, `feedback`)
+- [x] Editor: go-to-definition (Cmd+Click node ID to select on canvas)

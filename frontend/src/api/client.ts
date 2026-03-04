@@ -3,9 +3,12 @@ import type {
   ValidateResponse,
   SimulateResponse,
   OptimizeResponse,
+  OptimizePassResponse,
+  OptimizePassName,
   CompileResponse,
+  GenerateResponse,
   BuildResponse,
-  CompileBuildResponse,
+  BatchBuildResponse,
   PeekResponse,
   ParseError,
   NodeTypeCatalog,
@@ -178,24 +181,34 @@ export async function optimizeGraph(
   return post<OptimizeResponse>("/optimize", { graph });
 }
 
+export async function optimizePass(
+  graph: Record<string, unknown>,
+  passName: OptimizePassName
+): Promise<OptimizePassResponse> {
+  return post<OptimizePassResponse>("/optimize/pass", {
+    graph,
+    pass_name: passName,
+  });
+}
+
 export async function compileGraph(
   graph: Record<string, unknown>
 ): Promise<CompileResponse> {
   return post<CompileResponse>("/compile", { graph });
 }
 
-export async function buildGraph(
+export async function generateGraph(
   graph: Record<string, unknown>,
   platform: string
-): Promise<BuildResponse> {
-  return post<BuildResponse>("/build", { graph, platform });
+): Promise<GenerateResponse> {
+  return post<GenerateResponse>("/generate", { graph, platform });
 }
 
-export async function buildGraphZip(
+export async function generateGraphZip(
   graph: Record<string, unknown>,
   platform: string
 ): Promise<Blob> {
-  const resp = await fetch(`${BASE}/build/zip`, {
+  const resp = await fetch(`${BASE}/generate/zip`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ graph, platform }),
@@ -207,11 +220,16 @@ export async function buildGraphZip(
   return resp.blob();
 }
 
-export async function compileBuild(
+export async function getGeneratePlatforms(): Promise<string[]> {
+  const data = await get<{ platforms: string[] }>("/generate/platforms");
+  return data.platforms;
+}
+
+export async function buildGraph(
   graph: Record<string, unknown>,
   platform: string
-): Promise<CompileBuildResponse> {
-  return post<CompileBuildResponse>("/build/compile", { graph, platform });
+): Promise<BuildResponse> {
+  return post<BuildResponse>("/build", { graph, platform });
 }
 
 export async function downloadBuiltBinary(
@@ -230,17 +248,21 @@ export async function downloadBuiltBinary(
   return resp.blob();
 }
 
-export async function getBuildPlatforms(): Promise<string[]> {
-  const data = await get<{ platforms: string[] }>("/build/platforms");
-  return data.platforms;
-}
-
 export async function batchBuild(
   graph: Record<string, unknown>,
   platforms: string[]
-): Promise<{ results: CompileBuildResponse[] }> {
-  return post<{ results: CompileBuildResponse[] }>("/build/batch", {
+): Promise<BatchBuildResponse> {
+  return post<BatchBuildResponse>("/build/batch", {
     graph,
     platforms,
   });
+}
+
+export async function downloadBatchZip(batchId: string): Promise<Blob> {
+  const resp = await fetch(`${BASE}/build/batch/${batchId}/zip`);
+  if (!resp.ok) {
+    const detail = await resp.text();
+    throw new Error(`API error ${resp.status}: ${detail}`);
+  }
+  return resp.blob();
 }

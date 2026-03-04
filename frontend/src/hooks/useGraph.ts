@@ -5,13 +5,14 @@ import type {
   SimulateResponse,
   OptimizeResponse,
   CompileResponse,
+  GenerateResponse,
   BuildResponse,
-  CompileBuildResponse,
   ValidateResponse,
   ValidationErrorDetail,
   InputSignalType,
   ParseError,
   NodeTypeCatalog,
+  OptimizePassName,
 } from "../api/types";
 import {
   loadGraphJson,
@@ -24,14 +25,15 @@ import {
   simulatePeek,
   simulateReset,
   getBuffer,
-  optimizeGraph,
+  optimizePass,
   compileGraph,
+  generateGraph,
+  generateGraphZip,
   buildGraph,
-  buildGraphZip,
-  compileBuild,
   downloadBuiltBinary,
-  getBuildPlatforms,
+  getGeneratePlatforms,
   batchBuild,
+  downloadBatchZip,
   validateGraph,
   getNodeTypes,
 } from "../api/client";
@@ -58,8 +60,8 @@ interface GraphState {
   peekValues: Record<string, number> | null;
   optimizeResult: OptimizeResponse | null;
   compileResult: CompileResponse | null;
+  generateResult: GenerateResponse | null;
   buildResult: BuildResponse | null;
-  compileBuildResult: CompileBuildResponse | null;
   buildPlatforms: string[];
   validationResult: ValidateResponse | null;
   validationErrors: ValidationErrorDetail[];
@@ -71,6 +73,11 @@ interface GraphState {
   exportSvg: (() => Promise<void>) | null;
   inputSignals: Record<string, InputSignalType>;
   error: string | null;
+
+  // Optimization pass results
+  passResults: { passName: string; nodesBefore: number; nodesAfter: number }[];
+  preOptimizeSnapshot: { nodes: Node<RFNodeData>[]; edges: Edge[]; gdspSource: string } | null;
+  resetOptimize: () => void;
 
   // Editor state
   gdspSource: string;
@@ -100,13 +107,15 @@ interface GraphState {
   resetSimulation: () => Promise<void>;
   runOptimize: () => Promise<void>;
   runCompile: () => Promise<void>;
+  runGenerate: (platform: string) => Promise<void>;
   runBuild: (platform: string) => Promise<void>;
-  runCompileBuild: (platform: string) => Promise<void>;
-  downloadBuildZip: (platform: string) => Promise<void>;
+  downloadGenerateZip: (platform: string) => Promise<void>;
   downloadBuiltBinary: (platform: string) => Promise<void>;
   fetchBuildPlatforms: () => Promise<void>;
-  batchBuildResults: CompileBuildResponse[];
+  batchBuildResults: BuildResponse[];
+  batchBuildId: string | null;
   runBatchBuild: (platforms: string[]) => Promise<void>;
+  downloadBatchBuildZip: () => Promise<void>;
   runValidate: () => Promise<void>;
   layoutVersion: number;
   setLayoutOptions: (opts: Partial<ElkLayoutOptions>) => void;
@@ -134,6 +143,7 @@ interface GraphState {
   deleteEdges: (ids: string[]) => void;
   addEdge: (source: string, target: string) => void;
   duplicateNodes: (ids: string[]) => void;
+  selectNodeById: (id: string) => void;
 }
 
 function toFlowNodes(
@@ -170,6 +180,16 @@ function toFlowEdges(
   }));
 }
 
+const STORAGE_KEY = "dsp-graph:gdspSource";
+
+function loadSavedSource(): string {
+  try {
+    return localStorage.getItem(STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export const useGraph = create<GraphState>((set, get) => ({
   nodes: [],
   edges: [],
@@ -181,10 +201,11 @@ export const useGraph = create<GraphState>((set, get) => ({
   bufferData: {},
   optimizeResult: null,
   compileResult: null,
+  generateResult: null,
   buildResult: null,
-  compileBuildResult: null,
   buildPlatforms: [],
   batchBuildResults: [],
+  batchBuildId: null,
   validationResult: null,
   validationErrors: [],
   errorNodeIds: new Set<string>(),
@@ -196,12 +217,14 @@ export const useGraph = create<GraphState>((set, get) => ({
   exportSvg: null,
   inputSignals: {},
   error: null,
-  gdspSource: "",
+  gdspSource: loadSavedSource(),
   parseError: null,
   isLivePreview: true,
   showEditor: true,
   showGraph: true,
   nodeTypeCatalog: null,
+  passResults: [],
+  preOptimizeSnapshot: null,
   undoStack: [],
   redoStack: [],
   canUndo: false,
@@ -414,22 +437,22 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
-  runBuild: async (platform) => {
+  runGenerate: async (platform) => {
     const exported = await get().exportJson();
     if (!exported) return;
     try {
-      const result = await buildGraph(exported, platform);
-      set({ buildResult: result, error: null });
+      const result = await generateGraph(exported, platform);
+      set({ generateResult: result, error: null });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
   },
 
-  downloadBuildZip: async (platform) => {
+  downloadGenerateZip: async (platform) => {
     const exported = await get().exportJson();
     if (!exported) return;
     try {
-      const blob = await buildGraphZip(exported, platform);
+      const blob = await generateGraphZip(exported, platform);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -441,12 +464,12 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
-  runCompileBuild: async (platform) => {
+  runBuild: async (platform) => {
     const exported = await get().exportJson();
     if (!exported) return;
     try {
-      const result = await compileBuild(exported, platform);
-      set({ compileBuildResult: result, error: null });
+      const result = await buildGraph(exported, platform);
+      set({ buildResult: result, error: null });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -457,7 +480,7 @@ export const useGraph = create<GraphState>((set, get) => ({
     if (!exported) return;
     try {
       const blob = await downloadBuiltBinary(exported, platform);
-      const result = get().compileBuildResult;
+      const result = get().buildResult;
       const filename = result?.output_file || `${get().graphName || "graph"}_${platform}`;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -475,7 +498,23 @@ export const useGraph = create<GraphState>((set, get) => ({
     if (!exported) return;
     try {
       const result = await batchBuild(exported, platforms);
-      set({ batchBuildResults: result.results, error: null });
+      set({ batchBuildResults: result.results, batchBuildId: result.batch_id, error: null });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  downloadBatchBuildZip: async () => {
+    const batchId = get().batchBuildId;
+    if (!batchId) return;
+    try {
+      const blob = await downloadBatchZip(batchId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${get().graphName || "graph"}_all_platforms.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     }
@@ -483,7 +522,7 @@ export const useGraph = create<GraphState>((set, get) => ({
 
   fetchBuildPlatforms: async () => {
     try {
-      const platforms = await getBuildPlatforms();
+      const platforms = await getGeneratePlatforms();
       set({ buildPlatforms: platforms });
     } catch (e) {
       console.error("Failed to fetch build platforms:", e);
@@ -540,21 +579,69 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
+  resetOptimize: () => {
+    const snapshot = get().preOptimizeSnapshot;
+    if (!snapshot) return;
+    set({
+      nodes: snapshot.nodes,
+      edges: snapshot.edges,
+      gdspSource: snapshot.gdspSource,
+      passResults: [],
+      preOptimizeSnapshot: null,
+      optimizeResult: null,
+    });
+  },
+
   runOptimize: async () => {
     const exported = await get().exportJson();
     if (!exported) return;
+
+    // Save snapshot for reset
+    set({
+      preOptimizeSnapshot: {
+        nodes: [...get().nodes],
+        edges: [...get().edges],
+        gdspSource: get().gdspSource,
+      },
+      passResults: [],
+    });
+
+    const passes: OptimizePassName[] = [
+      "constant_fold",
+      "eliminate_cse",
+      "eliminate_dead_nodes",
+      "promote_control_rate",
+    ];
+
     try {
-      const result = await optimizeGraph(exported);
-      set({
-        nodes: toFlowNodes(result.optimized.nodes),
-        edges: toFlowEdges(result.optimized.edges),
-        optimizeResult: result,
-        error: null,
-      });
-      // Sync editor with optimized graph source
-      const gdspSource = await get().exportGdsp();
-      if (gdspSource) {
-        set({ gdspSource });
+      let currentGraph = exported;
+      const results: { passName: string; nodesBefore: number; nodesAfter: number }[] = [];
+      let lastOptimized = null;
+
+      for (const passName of passes) {
+        const result = await optimizePass(currentGraph, passName);
+        results.push({
+          passName,
+          nodesBefore: result.stats.nodes_before,
+          nodesAfter: result.stats.nodes_after,
+        });
+        lastOptimized = result.optimized;
+        // Export optimized ReactFlowGraph back to Graph JSON for next pass
+        currentGraph = await exportGraphJson(result.optimized);
+      }
+
+      if (lastOptimized) {
+        set({
+          nodes: toFlowNodes(lastOptimized.nodes),
+          edges: toFlowEdges(lastOptimized.edges),
+          passResults: results,
+          error: null,
+        });
+        // Sync editor
+        const gdspSource = await get().exportGdsp();
+        if (gdspSource) {
+          set({ gdspSource });
+        }
       }
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
@@ -682,4 +769,33 @@ export const useGraph = create<GraphState>((set, get) => ({
     });
     set((s) => ({ nodes: [...s.nodes, ...newNodes] }));
   },
+
+  selectNodeById: (id) => {
+    const node = get().nodes.find((n) => n.id === id) ?? null;
+    if (node) {
+      set({
+        selectedNode: node,
+        nodes: get().nodes.map((n) => ({
+          ...n,
+          selected: n.id === id,
+        })),
+      });
+    }
+  },
 }));
+
+// Auto-save gdspSource to localStorage (debounced)
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let lastSavedSource = useGraph.getState().gdspSource;
+useGraph.subscribe((state) => {
+  if (state.gdspSource === lastSavedSource) return;
+  lastSavedSource = state.gdspSource;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, state.gdspSource);
+    } catch {
+      // localStorage full or unavailable -- silently ignore
+    }
+  }, 500);
+});

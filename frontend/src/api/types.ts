@@ -62,12 +62,25 @@ export interface CompileResponse {
   cpp_source: string;
 }
 
-export interface BuildResponse {
+export interface GenerateResponse {
   dsp_cpp: string;
   adapter_cpp: string;
   manifest: string;
   platform: string;
   supported_platforms: string[];
+}
+
+export interface BuildResponse {
+  success: boolean;
+  platform: string;
+  stdout: string;
+  stderr: string;
+  output_file: string | null;
+}
+
+export interface BatchBuildResponse {
+  batch_id: string;
+  results: BuildResponse[];
 }
 
 export type InputSignalType = "impulse" | "sine" | "noise" | "ones";
@@ -90,12 +103,16 @@ export interface NodeTypeInfo {
   color: string;
 }
 
-export interface CompileBuildResponse {
-  success: boolean;
-  platform: string;
-  stdout: string;
-  stderr: string;
-  output_file: string | null;
-}
-
 export type NodeTypeCatalog = Record<string, NodeTypeInfo>;
+
+export type OptimizePassName =
+  | "constant_fold"
+  | "eliminate_cse"
+  | "eliminate_dead_nodes"
+  | "promote_control_rate";
+
+export interface OptimizePassResponse {
+  original: ReactFlowGraph;
+  optimized: ReactFlowGraph;
+  stats: { nodes_before: number; nodes_after: number; nodes_removed: number };
+}

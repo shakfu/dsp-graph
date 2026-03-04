@@ -1,6 +1,6 @@
 [project]
 name = "dsp-graph"
-version = "0.2.0"
+version = "0.1.8"
 description = "Visual graph editor, inspector, and debugger for gen-dsp signal graphs"
 readme = "README.md"
 license = {text = "MIT"}

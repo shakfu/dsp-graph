@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8]
+
 ### Added
 
+- **Editor: autocomplete**: keywords, builtins (~130 ops), named constants, and dynamic node IDs from the current graph. Completions are categorized by type (keyword, function, constant, variable) with priority boosting.
+- **Editor: snippets**: template expansion for `graph {}`, `param`, `in`, `out`, `feedback` declarations with tab stops for quick authoring.
+- **Editor: inline error markers**: parse errors from the store are pushed as CodeMirror diagnostics (squiggly underlines) at the reported line/col position.
+- **Editor: bracket matching**: `{}` and `()` pairs highlighted via `@codemirror/language`.
+- **Editor: go-to-definition**: Cmd+Click (Ctrl+Click) on a node ID in the editor selects the corresponding node on the canvas.
+- **C++ download button**: "Download" button next to "Copy" in the C++ tab. Downloads the compiled source as `{graphName}.h`.
+- **Drag-and-drop file loading**: drop `.gdsp` or `.json` files anywhere on the app to load them. Green dashed overlay shown during drag. `.gdsp` files load into the editor; `.json` files load via the graph JSON pipeline.
+- **localStorage persistence**: `.gdsp` source auto-saves to `localStorage` with 500ms debounce and restores on page load. Survives browser refresh without explicit save.
+- **selectNodeById store action**: programmatically select a node by ID and update React Flow selection state (used by go-to-definition).
 - **Cycle detection visualization**: validation endpoint returns `cycle_node_ids` on cycle errors. Cycle nodes are highlighted with a dashed purple border on the canvas; edges between cycle nodes are animated with purple stroke.
 - **Waveform display (oscilloscope)**: new `WaveformDisplay` canvas component for time-domain output visualization. Auto-scaling amplitude, center line, dB labels. Output data accumulates across `continue` calls for a full-session view.
 - **FFT/spectrum view**: new `SpectrumDisplay` canvas component with client-side radix-2 FFT (no external deps). Magnitude spectrum plot with -80..0 dB range. Toggle between Time and Freq views in SimulationPanel.
@@ -71,7 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Default layout direction changed from RIGHT to DOWN.
 - Default simulation input signal changed from impulse to sine (440 Hz) for more useful output visualization.
 
-## [0.2.0]
+## [0.1.7]
 
 ### Added
 

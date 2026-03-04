@@ -1,11 +1,13 @@
-"""Build-to-plugin-target endpoints."""
+"""Build-to-binary endpoints (compilation via gen-dsp's Builder)."""
 
 from __future__ import annotations
 
 import io
-import platform
+import logging
 import shutil
 import tempfile
+import time
+import uuid
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -14,57 +16,27 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from gen_dsp.core.builder import Builder  # type: ignore[import-untyped]
 from gen_dsp.core.project import ProjectConfig, ProjectGenerator  # type: ignore[import-untyped]
-from gen_dsp.graph.adapter import (
-    SUPPORTED_PLATFORMS,
-    generate_adapter_cpp,
-    generate_manifest,
-)
-from gen_dsp.graph.compile import compile_graph
+from gen_dsp.graph.adapter import SUPPORTED_PLATFORMS
 from gen_dsp.graph.models import Graph
 from pydantic import BaseModel
 
-# OS availability per platform, from gen-dsp README.
-# Keys: platform name -> set of sys.platform-compatible OS tags.
-_PLATFORM_OS: dict[str, set[str]] = {
-    "au": {"darwin"},
-    "chuck": {"darwin", "linux"},
-    "circle": {"linux"},
-    "clap": {"darwin", "linux", "win32"},
-    "daisy": {"linux"},
-    "lv2": {"darwin", "linux"},
-    "max": {"darwin"},
-    "pd": {"darwin", "linux"},
-    "sc": {"darwin", "linux", "win32"},
-    "vcvrack": {"darwin", "linux"},
-    "vst3": {"darwin", "linux", "win32"},
-}
+from dsp_graph.api.generate import GenerateRequest, _validate_generate_request
+from dsp_graph.cache import BuildCache, cache_key, get_cache
 
-_HOST_OS = (
-    "darwin"
-    if platform.system() == "Darwin"
-    else ("win32" if platform.system() == "Windows" else "linux")
-)
-
-
-def _host_platforms() -> list[str]:
-    """Return platforms supported on the current OS, sorted alphabetically."""
-    return sorted(p for p, oses in _PLATFORM_OS.items() if _HOST_OS in oses)
-
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Batch artifact cache: batch_id -> {created, artifacts: {platform: (cache_key, filename)}}
+_batch_cache: dict[str, dict[str, Any]] = {}
+_BATCH_TTL = 600  # 10 minutes
 
-class BuildRequest(BaseModel):
-    graph: dict[str, Any]
-    platform: str
 
-
-class BuildResponse(BaseModel):
-    dsp_cpp: str
-    adapter_cpp: str
-    manifest: str
-    platform: str
-    supported_platforms: list[str]
+def _cleanup_expired_batches() -> None:
+    now = time.monotonic()
+    expired = [k for k, v in _batch_cache.items() if now - v["created"] > _BATCH_TTL]
+    for k in expired:
+        del _batch_cache[k]
 
 
 class CompileBuildResponse(BaseModel):
@@ -75,82 +47,31 @@ class CompileBuildResponse(BaseModel):
     output_file: str | None
 
 
-def _validate_build_request(req: BuildRequest) -> Graph:
-    """Validate platform and parse graph, raising HTTPException on failure."""
-    if req.platform not in SUPPORTED_PLATFORMS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Unsupported platform: {req.platform!r}. Valid: {sorted(SUPPORTED_PLATFORMS)}",
-        )
-    try:
-        return Graph.model_validate(req.graph)
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+class _BuildResult:
+    """Internal result from _compile_build, carrying response + filesystem details."""
+
+    __slots__ = ("response", "tmpdir", "output_path")
+
+    def __init__(
+        self,
+        response: CompileBuildResponse,
+        tmpdir: Path | None,
+        output_path: Path | None,
+    ) -> None:
+        self.response = response
+        self.tmpdir = tmpdir
+        self.output_path = output_path
 
 
-@router.post("/build", response_model=BuildResponse)
-async def generate(req: BuildRequest) -> BuildResponse:
-    """Generate plugin source files: DSP C++, adapter C++, and manifest."""
-    g = _validate_build_request(req)
-
-    try:
-        dsp_cpp = compile_graph(g)
-        adapter_cpp = generate_adapter_cpp(g, req.platform)
-        manifest = generate_manifest(g)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    return BuildResponse(
-        dsp_cpp=dsp_cpp,
-        adapter_cpp=adapter_cpp,
-        manifest=manifest,
-        platform=req.platform,
-        supported_platforms=sorted(SUPPORTED_PLATFORMS),
-    )
-
-
-@router.get("/build/platforms")
-async def platforms() -> dict[str, list[str]]:
-    """Return the list of build platforms available on the current OS."""
-    return {"platforms": _host_platforms()}
-
-
-@router.post("/build/zip")
-async def build_zip(req: BuildRequest) -> StreamingResponse:
-    """Build and return a zip archive with DSP C++, adapter C++, and manifest."""
-    g = _validate_build_request(req)
-
-    try:
-        dsp_cpp = compile_graph(g)
-        adapter_cpp = generate_adapter_cpp(g, req.platform)
-        manifest = generate_manifest(g)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(f"{g.name}_dsp.h", dsp_cpp)
-        zf.writestr(f"{g.name}_{req.platform}.cpp", adapter_cpp)
-        zf.writestr("manifest.json", manifest)
-    buf.seek(0)
-
-    filename = f"{g.name}_{req.platform}.zip"
-    return StreamingResponse(
-        buf,
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-def _compile_build(g: Graph, platform: str) -> tuple[CompileBuildResponse, Path | None]:
+def _compile_build(g: Graph, platform: str) -> _BuildResult:
     """Run the full compile+build pipeline in a temp directory.
 
     Uses gen-dsp's ProjectGenerator for complete project setup (source files,
     platform templates, build files, platform-specific extras) and Builder for
     compilation.
 
-    Returns the response and the temp dir path (caller must clean up on success,
-    or None if already cleaned up on failure).
+    Returns a _BuildResult with response, tmpdir (caller must clean up on success),
+    and the actual output_path on disk.
     """
     tmpdir = Path(tempfile.mkdtemp(prefix="dsp_graph_build_")).resolve()
     try:
@@ -167,12 +88,83 @@ def _compile_build(g: Graph, platform: str) -> tuple[CompileBuildResponse, Path 
             output_file=output_file,
         )
         if result.success:
-            return resp, tmpdir
+            return _BuildResult(resp, tmpdir, result.output_file)
         shutil.rmtree(tmpdir, ignore_errors=True)
-        return resp, None
+        return _BuildResult(resp, None, None)
     except Exception:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise
+
+
+def _read_output_bytes(output_path: Path) -> bytes:
+    """Read output artifact as bytes, handling both files and bundle directories."""
+    if output_path.is_file():
+        return output_path.read_bytes()
+    if output_path.is_dir():
+        # Bundle (e.g. .clap on macOS) -- zip the directory
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for child in output_path.rglob("*"):
+                if child.is_file():
+                    zf.writestr(str(child.relative_to(output_path.parent)), child.read_bytes())
+        return buf.getvalue()
+    msg = f"Output path is neither file nor directory: {output_path}"
+    raise FileNotFoundError(msg)
+
+
+class _CachedBuildResult:
+    """Result from _compile_build_cached."""
+
+    __slots__ = ("response", "data", "filename")
+
+    def __init__(
+        self, response: CompileBuildResponse, data: bytes | None, filename: str | None
+    ) -> None:
+        self.response = response
+        self.data = data
+        self.filename = filename
+
+
+def _compile_build_cached(
+    g: Graph, platform: str, disk_cache: BuildCache | None = None
+) -> _CachedBuildResult:
+    """Compile with disk cache. On hit, returns cached bytes without recompiling."""
+    bc = disk_cache or get_cache()
+    key = cache_key(g, platform)
+
+    # Check cache
+    hit = bc.get(key)
+    if hit is not None:
+        data, filename = hit
+        resp = CompileBuildResponse(
+            success=True,
+            platform=platform,
+            stdout="(cached)",
+            stderr="",
+            output_file=filename,
+        )
+        logger.info("Build cache hit for %s/%s", platform, key[:12])
+        return _CachedBuildResult(resp, data, filename)
+
+    # Cache miss -- build
+    br = _compile_build(g, platform)
+    if not br.response.success or br.output_path is None:
+        return _CachedBuildResult(br.response, None, None)
+
+    try:
+        data = _read_output_bytes(br.output_path)
+    except FileNotFoundError:
+        if br.tmpdir is not None:
+            shutil.rmtree(br.tmpdir, ignore_errors=True)
+        return _CachedBuildResult(br.response, None, None)
+
+    filename = br.response.output_file or platform
+    bc.put(key, data, platform, filename)
+
+    if br.tmpdir is not None:
+        shutil.rmtree(br.tmpdir, ignore_errors=True)
+
+    return _CachedBuildResult(br.response, data, filename)
 
 
 class BatchBuildRequest(BaseModel):
@@ -181,18 +173,63 @@ class BatchBuildRequest(BaseModel):
 
 
 class BatchBuildResponse(BaseModel):
+    batch_id: str
     results: list[CompileBuildResponse]
+
+
+@router.post("/build", response_model=CompileBuildResponse)
+async def compile_build(req: GenerateRequest) -> CompileBuildResponse:
+    """Compile a Graph to a binary plugin via gen-dsp's Builder."""
+    g = _validate_generate_request(req)
+
+    try:
+        cr = _compile_build_cached(g, req.platform)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return cr.response
+
+
+@router.post("/build/binary")
+async def download_binary(req: GenerateRequest) -> StreamingResponse:
+    """Compile a Graph and return the binary plugin file."""
+    g = _validate_generate_request(req)
+
+    try:
+        cr = _compile_build_cached(g, req.platform)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not cr.response.success or cr.data is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Build failed: {cr.response.stderr}",
+        )
+
+    filename = cr.filename or "output"
+    return StreamingResponse(
+        io.BytesIO(cr.data),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
 
 
 @router.post("/build/batch", response_model=BatchBuildResponse)
 async def batch_build(req: BatchBuildRequest) -> BatchBuildResponse:
-    """Build for multiple platforms at once."""
+    """Build for multiple platforms at once, caching artifacts for later zip download."""
+    _cleanup_expired_batches()
+
     try:
         g = Graph.model_validate(req.graph)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    batch_id = uuid.uuid4().hex
+    artifacts: dict[str, tuple[str, str]] = {}  # platform -> (cache_key, filename)
     results: list[CompileBuildResponse] = []
+
     for plat in req.platforms:
         if plat not in SUPPORTED_PLATFORMS:
             results.append(
@@ -206,10 +243,11 @@ async def batch_build(req: BatchBuildRequest) -> BatchBuildResponse:
             )
             continue
         try:
-            resp, tmpdir = _compile_build(g, plat)
-            if tmpdir is not None:
-                shutil.rmtree(tmpdir, ignore_errors=True)
-            results.append(resp)
+            cr = _compile_build_cached(g, plat)
+            if cr.response.success and cr.data is not None and cr.filename is not None:
+                key = cache_key(g, plat)
+                artifacts[plat] = (key, cr.filename)
+            results.append(cr.response)
         except Exception as exc:
             results.append(
                 CompileBuildResponse(
@@ -220,64 +258,71 @@ async def batch_build(req: BatchBuildRequest) -> BatchBuildResponse:
                     output_file=None,
                 )
             )
-    return BatchBuildResponse(results=results)
+
+    _batch_cache[batch_id] = {"created": time.monotonic(), "artifacts": artifacts}
+    return BatchBuildResponse(batch_id=batch_id, results=results)
 
 
-@router.post("/build/compile", response_model=CompileBuildResponse)
-async def compile_build(req: BuildRequest) -> CompileBuildResponse:
-    """Compile a Graph to a binary plugin via gen-dsp's Builder."""
-    g = _validate_build_request(req)
+@router.get("/build/batch/{batch_id}/zip")
+async def download_batch_zip(batch_id: str) -> StreamingResponse:
+    """Download a zip of all cached binaries from a batch build."""
+    _cleanup_expired_batches()
 
-    try:
-        resp, tmpdir = _compile_build(g, req.platform)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    finally:
-        # Always clean up for the non-download endpoint
-        pass
+    entry = _batch_cache.get(batch_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Batch not found or expired")
 
-    if tmpdir is not None:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+    artifacts: dict[str, tuple[str, str]] = entry["artifacts"]
+    if not artifacts:
+        raise HTTPException(status_code=404, detail="No successful builds in batch")
 
-    return resp
+    bc = get_cache()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for plat, (key, filename) in artifacts.items():
+            hit = bc.get(key)
+            if hit is not None:
+                data, _ = hit
+                zf.writestr(f"{plat}/{filename}", data)
+    buf.seek(0)
 
-
-@router.post("/build/binary")
-async def download_binary(req: BuildRequest) -> StreamingResponse:
-    """Compile a Graph and return the binary plugin file."""
-    g = _validate_build_request(req)
-
-    try:
-        resp, tmpdir = _compile_build(g, req.platform)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    if not resp.success or tmpdir is None or resp.output_file is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Build failed: {resp.stderr}",
-        )
-
-    output_path = tmpdir / resp.output_file
-    if not output_path.is_file():
-        # Check in build subdirectories
-        candidates = list(tmpdir.rglob(resp.output_file))
-        if candidates:
-            output_path = candidates[0]
-        else:
-            shutil.rmtree(tmpdir, ignore_errors=True)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Build succeeded but output file not found: {resp.output_file}",
-            )
-
-    binary_data = output_path.read_bytes()
-    shutil.rmtree(tmpdir, ignore_errors=True)
+    # Remove from cache after serving
+    del _batch_cache[batch_id]
 
     return StreamingResponse(
-        io.BytesIO(binary_data),
-        media_type="application/octet-stream",
-        headers={
-            "Content-Disposition": f'attachment; filename="{resp.output_file}"',
-        },
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="batch_build.zip"'},
+    )
+
+
+# -- Cache management endpoints --
+
+
+class CacheClearResponse(BaseModel):
+    removed: int
+
+
+class CacheInfoResponse(BaseModel):
+    entries: int
+    total_bytes: int
+    cache_dir: str
+
+
+@router.delete("/build/cache", response_model=CacheClearResponse)
+async def clear_build_cache() -> CacheClearResponse:
+    """Clear all cached build artifacts."""
+    n = get_cache().clear()
+    return CacheClearResponse(removed=n)
+
+
+@router.get("/build/cache/info", response_model=CacheInfoResponse)
+async def build_cache_info() -> CacheInfoResponse:
+    """Return cache statistics."""
+    bc = get_cache()
+    entries, total_bytes = bc.size()
+    return CacheInfoResponse(
+        entries=entries,
+        total_bytes=total_bytes,
+        cache_dir=str(bc.cache_dir),
     )

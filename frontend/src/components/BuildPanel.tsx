@@ -32,15 +32,17 @@ const codeBlockStyle: React.CSSProperties = {
 
 export function BuildPanel() {
   const nodes = useGraph((s) => s.nodes);
+  const generateResult = useGraph((s) => s.generateResult);
   const buildResult = useGraph((s) => s.buildResult);
-  const compileBuildResult = useGraph((s) => s.compileBuildResult);
   const buildPlatforms = useGraph((s) => s.buildPlatforms);
   const batchBuildResults = useGraph((s) => s.batchBuildResults);
+  const batchBuildId = useGraph((s) => s.batchBuildId);
+  const runGenerate = useGraph((s) => s.runGenerate);
   const runBuild = useGraph((s) => s.runBuild);
-  const runCompileBuild = useGraph((s) => s.runCompileBuild);
   const runBatchBuild = useGraph((s) => s.runBatchBuild);
-  const downloadBuildZip = useGraph((s) => s.downloadBuildZip);
+  const downloadGenerateZip = useGraph((s) => s.downloadGenerateZip);
   const downloadBuiltBinary = useGraph((s) => s.downloadBuiltBinary);
+  const downloadBatchBuildZip = useGraph((s) => s.downloadBatchBuildZip);
   const fetchBuildPlatforms = useGraph((s) => s.fetchBuildPlatforms);
 
   const [platform, setPlatform] = useState("");
@@ -88,13 +90,13 @@ export function BuildPanel() {
         </select>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <button style={buttonStyle} onClick={() => void runBuild(platform)}>
+        <button style={buttonStyle} onClick={() => void runGenerate(platform)}>
           Generate
         </button>
-        <button style={buttonStyle} onClick={() => void downloadBuildZip(platform)}>
+        <button style={buttonStyle} onClick={() => void downloadGenerateZip(platform)}>
           Download Zip
         </button>
-        <button style={buttonStyle} onClick={() => void runCompileBuild(platform)}>
+        <button style={buttonStyle} onClick={() => void runBuild(platform)}>
           Build
         </button>
         <button
@@ -105,10 +107,10 @@ export function BuildPanel() {
           {batchLoading ? "Building..." : "Build All"}
         </button>
       </div>
-      {buildResult && (
+      {generateResult && (
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>
-            Generated for {buildResult.platform.toUpperCase()}
+            Generated for {generateResult.platform.toUpperCase()}
           </div>
           <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
             <button
@@ -146,31 +148,31 @@ export function BuildPanel() {
             </button>
           </div>
           {showOutput === "dsp" && (
-            <div style={codeBlockStyle}>{buildResult.dsp_cpp}</div>
+            <div style={codeBlockStyle}>{generateResult.dsp_cpp}</div>
           )}
           {showOutput === "adapter" && (
-            <div style={codeBlockStyle}>{buildResult.adapter_cpp}</div>
+            <div style={codeBlockStyle}>{generateResult.adapter_cpp}</div>
           )}
           {showOutput === "manifest" && (
-            <div style={codeBlockStyle}>{buildResult.manifest}</div>
+            <div style={codeBlockStyle}>{generateResult.manifest}</div>
           )}
         </div>
       )}
-      {compileBuildResult && (
+      {buildResult && (
         <div style={{ marginTop: 8 }}>
           <div
             style={{
               fontSize: 11,
-              color: compileBuildResult.success ? "#2e7d32" : "#c62828",
+              color: buildResult.success ? "#2e7d32" : "#c62828",
               marginBottom: 4,
               fontWeight: 600,
             }}
           >
-            {compileBuildResult.success ? "Build succeeded" : "Build failed"}
+            {buildResult.success ? "Build succeeded" : "Build failed"}
             {" -- "}
-            {compileBuildResult.platform.toUpperCase()}
+            {buildResult.platform.toUpperCase()}
           </div>
-          {(compileBuildResult.stdout || compileBuildResult.stderr) && (
+          {(buildResult.stdout || buildResult.stderr) && (
             <div>
               <button
                 style={{
@@ -186,18 +188,18 @@ export function BuildPanel() {
               </button>
               {showBuildLog && (
                 <div style={codeBlockStyle}>
-                  {compileBuildResult.stdout}
-                  {compileBuildResult.stderr && (
+                  {buildResult.stdout}
+                  {buildResult.stderr && (
                     <>
-                      {compileBuildResult.stdout ? "\n--- stderr ---\n" : ""}
-                      {compileBuildResult.stderr}
+                      {buildResult.stdout ? "\n--- stderr ---\n" : ""}
+                      {buildResult.stderr}
                     </>
                   )}
                 </div>
               )}
             </div>
           )}
-          {compileBuildResult.success && compileBuildResult.output_file && (
+          {buildResult.success && buildResult.output_file && (
             <button
               style={{ ...buttonStyle, marginTop: 4 }}
               onClick={() => void downloadBuiltBinary(platform)}
@@ -242,6 +244,14 @@ export function BuildPanel() {
               ))}
             </tbody>
           </table>
+          {batchBuildId && batchBuildResults.some((r) => r.success) && (
+            <button
+              style={{ ...buttonStyle, marginTop: 6 }}
+              onClick={() => void downloadBatchBuildZip()}
+            >
+              Download All
+            </button>
+          )}
         </div>
       )}
     </div>
