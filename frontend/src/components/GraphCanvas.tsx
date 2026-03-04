@@ -258,6 +258,20 @@ export function GraphCanvas() {
     });
   }, [topologyKey, layoutVersion]);
 
+  // fitView when the React Flow container is resized (window resize, divider drag, etc.)
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => fitViewRef.current());
+      });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   // Sync local React Flow state -> store (drag positions, selections, etc.)
   useEffect(() => {
     setStoreNodes(nodes as Node<RFNodeData>[]);
@@ -420,7 +434,7 @@ export function GraphCanvas() {
   return (
     <DirectionContext.Provider value={direction}>
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-      <div style={{ width: "100%", height: "100%" }} onKeyDown={onKeyDown} tabIndex={-1}>
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} onKeyDown={onKeyDown} tabIndex={-1}>
         <ReactFlow
           nodes={styledNodes}
           edges={styledEdges}
