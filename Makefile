@@ -1,6 +1,6 @@
 .PHONY: install install-dev test lint typecheck format qa \
 	frontend-install frontend-dev frontend-build \
-	serve dev dist clean
+	serve dev dist clean check publish publish-test
 
 # Python
 install:
@@ -43,6 +43,15 @@ dev:
 # Distribution
 dist: frontend-build
 	uv build
+
+check:
+	uv run twine check dist/*
+
+publish: dist check
+	uv run twine upload dist/*
+
+publish-test: dist check
+	uv run twine upload --repository testpypi dist/*
 
 clean:
 	rm -rf dist/ build/ src/*.egg-info src/dsp_graph/__pycache__ \
