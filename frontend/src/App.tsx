@@ -59,7 +59,7 @@ export function App() {
   const loadFromJson = useGraph((s) => s.loadFromJson);
   const setShowEditor = useGraph((s) => s.setShowEditor);
 
-  const [editorWidth, setEditorWidth] = useState(400);
+  const [editorWidth, setEditorWidth] = useState(500);
   const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {

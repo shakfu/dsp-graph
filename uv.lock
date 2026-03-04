@@ -210,7 +210,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "gen-dsp", extras = ["graph"], specifier = ">=0.1.15" },
+    { name = "gen-dsp", extras = ["graph"], directory = "../gen-dsp" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
 ]
@@ -255,15 +255,31 @@ wheels = [
 [[package]]
 name = "gen-dsp"
 version = "0.1.15"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e7/b9/1789bcfb036316e7ba5b7378bbd20bbee88c2274605d27f83cd1de7a2ba6/gen_dsp-0.1.15.tar.gz", hash = "sha256:176f1a917121048f651be9d8f400cf37a573a3d88c266adc43c52eb8855b5336", size = 260561, upload-time = "2026-03-03T13:52:57.41Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/d3/62d4154ec635a28406519161faf36b83e3d10bf9d9cd1a59088eaa9add7a/gen_dsp-0.1.15-py3-none-any.whl", hash = "sha256:fdea05216a59f82caeb8ed401851c741d0e1290b2b6b49239e7c34b0b9b366ff", size = 338595, upload-time = "2026-03-03T13:52:55.711Z" },
-]
+source = { directory = "../gen-dsp" }
 
 [package.optional-dependencies]
 graph = [
     { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", marker = "extra == 'sim'", specifier = ">=1.24" },
+    { name = "pydantic", marker = "extra == 'graph'", specifier = ">=2.0" },
+    { name = "pydantic", marker = "extra == 'sim'", specifier = ">=2.0" },
+]
+provides-extras = ["graph", "sim"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "minihost", specifier = ">=0.1.2" },
+    { name = "mypy", specifier = ">=1.19.1" },
+    { name = "numpy", specifier = ">=1.24" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pytest", specifier = ">=8.4.2" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "ruff", specifier = ">=0.15.0" },
+    { name = "twine", specifier = ">=6.2.0" },
 ]
 
 [[package]]
