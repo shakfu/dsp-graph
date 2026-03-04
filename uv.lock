@@ -188,7 +188,7 @@ toml = [
 
 [[package]]
 name = "dsp-graph"
-version = "0.2.0"
+version = "0.1.8"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
