@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Export GDSP button**: "Export GDSP" toolbar button downloads the current graph as a `.gdsp` file. The backend endpoint and store action already existed but had no UI trigger.
+
 ## [0.1.8]
 
 ### Added
@@ -28,10 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Batch build**: `POST /api/build/batch` accepts `{graph, platforms[]}` and returns per-platform build results. "Build All" button in BuildPanel with summary table (platform | status). Per-platform errors handled gracefully (no short-circuit).
 - Tests: `TestBufferEndpoints` (get, set/get roundtrip, invalid session, invalid buffer ID), `TestBatchBuild` (multi-platform, invalid platform, invalid graph).
 
-### Changed
-
-- **Simulation output auto-displays**: waveform (time-domain) view now defaults to visible after running simulation, instead of requiring a manual toggle.
-
 ### Fixed
 
 - **Canvas fitView no longer fires on unrelated store updates**: `fitView` previously re-triggered on every React re-render (e.g. simulation results, peek values) because `useReactFlow().fitView` has an unstable identity. Now uses a ref for the latest `fitView` and a topology key (sorted node IDs) so `fitView` only fires when nodes are actually added/removed/reloaded -- not on position changes from dragging or unrelated state updates.
@@ -43,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tests: `TestCompileBuild` (invalid platform, invalid graph, valid build with cmake skip) and `test_platforms_os_filtered` (verifies OS-specific platform filtering).
 
 ### Changed
+
+- **Simulation output auto-displays**: waveform (time-domain) view now defaults to visible after running simulation, instead of requiring a manual toggle.
 
 - **BuildPanel renamed to Plugin Target**: section header "Build Plugin" -> "Plugin Target", "Build" button -> "Generate", status text "Built for" -> "Generated for". New "Build" button triggers actual binary compilation.
 - **Plugin Target moved to top of Tools tab**: BuildPanel is now the first section in the sidebar Tools tab (above Simulation, Optimize, Layout).
@@ -73,8 +75,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - LayoutPanel sidebar component with algorithm/direction dropdowns, spacing inputs, and "Apply Layout" button.
 - `elkLayout()` async utility converting React Flow nodes/edges to ELK format and returning updated positions.
 - Layout state and actions (`layoutOptions`, `setLayoutOptions`, `runLayout`) in the zustand store.
-
-### Changed
 
 - App layout redesigned: horizontal split with editor pane (left), graph canvas (center), tabbed sidebar (right), and status bar (bottom). Replaces the previous single-pane-with-stacked-sidebar layout.
 - CompilePanel removed as standalone component; compile trigger moved to sidebar Tools tab, output moved to editor C++ tab.

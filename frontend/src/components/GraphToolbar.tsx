@@ -21,6 +21,7 @@ export function GraphToolbar() {
   const loadFromJson = useGraph((s) => s.loadFromJson);
   const loadFromGdsp = useGraph((s) => s.loadFromGdsp);
   const exportJson = useGraph((s) => s.exportJson);
+  const exportGdsp = useGraph((s) => s.exportGdsp);
   const exportSvg = useGraph((s) => s.exportSvg);
   const graphName = useGraph((s) => s.graphName);
   const error = useGraph((s) => s.error);
@@ -67,6 +68,18 @@ export function GraphToolbar() {
     const a = document.createElement("a");
     a.href = url;
     a.download = `${graphName || "graph"}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportGdsp = async () => {
+    const source = await exportGdsp();
+    if (!source) return;
+    const blob = new Blob([source], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${graphName || "graph"}.gdsp`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -152,6 +165,9 @@ export function GraphToolbar() {
       </button>
       <button style={buttonStyle} onClick={handleExport}>
         Export JSON
+      </button>
+      <button style={buttonStyle} onClick={handleExportGdsp}>
+        Export GDSP
       </button>
       <button
         style={buttonStyle}
