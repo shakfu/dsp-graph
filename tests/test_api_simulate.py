@@ -90,6 +90,28 @@ class TestSimulate:
         )
         assert resp.status_code == 422
 
+    def test_sample_rate_changes_phasor_output(
+        self, client: TestClient, phasor_json: dict[str, Any]
+    ) -> None:
+        """A phasor's per-sample increment is freq/sample_rate, so a different
+        sample rate must yield a different ramp."""
+        common = {"graph": phasor_json, "n_samples": 16}
+        r1 = client.post("/api/simulate", json={**common, "sample_rate": 44100})
+        r2 = client.post("/api/simulate", json={**common, "sample_rate": 8000})
+        assert r1.status_code == 200 and r2.status_code == 200
+        out1 = r1.json()["outputs"]["out1"]
+        out2 = r2.json()["outputs"]["out1"]
+        assert out1 != out2
+
+    def test_sample_rate_out_of_range_rejected(
+        self, client: TestClient, phasor_json: dict[str, Any]
+    ) -> None:
+        resp = client.post(
+            "/api/simulate",
+            json={"graph": phasor_json, "n_samples": 8, "sample_rate": 10_000_000},
+        )
+        assert resp.status_code == 422
+
 
 class TestStatefulSimulation:
     def test_simulate_returns_session_id(

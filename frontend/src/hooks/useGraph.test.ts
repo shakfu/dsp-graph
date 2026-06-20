@@ -45,6 +45,7 @@ describe("useGraph edge editing", () => {
       redoStack: [],
       canUndo: false,
       canRedo: false,
+      sampleRate: 44100,
       nodeTypeCatalog: catalog,
     });
   });
@@ -105,6 +106,12 @@ describe("useGraph edge editing", () => {
     expect(useGraph.getState().nodes.map((n) => n.id)).toEqual(["m1"]);
     expect(nodeData("m1").a).toBe(0);
     expect(useGraph.getState().edges).toHaveLength(0);
+  });
+
+  it("setSampleRate updates the configured rate", () => {
+    expect(useGraph.getState().sampleRate).toBe(44100);
+    useGraph.getState().setSampleRate(48000);
+    expect(useGraph.getState().sampleRate).toBe(48000);
   });
 
   it("undo restores node_data after an edge edit", () => {

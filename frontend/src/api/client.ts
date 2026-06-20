@@ -121,6 +121,7 @@ export async function getNodeTypes(): Promise<{
 export async function simulateGraph(
   graph: Record<string, unknown>,
   nSamples: number,
+  sampleRate?: number,
   params?: Record<string, number>,
   inputs?: Record<string, string>,
   sessionId?: string
@@ -128,6 +129,7 @@ export async function simulateGraph(
   return post<SimulateResponse>("/simulate", {
     graph,
     n_samples: nSamples,
+    sample_rate: sampleRate,
     params,
     inputs,
     session_id: sessionId,

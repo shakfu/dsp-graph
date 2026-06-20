@@ -90,6 +90,8 @@ export function SimulationPanel() {
   const fetchBuffer = useGraph((s) => s.fetchBuffer);
   const inputSignals = useGraph((s) => s.inputSignals);
   const setInputSignal = useGraph((s) => s.setInputSignal);
+  const sampleRate = useGraph((s) => s.sampleRate);
+  const setSampleRate = useGraph((s) => s.setSampleRate);
   const [nSamples, setNSamples] = useState(64);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("time");
 
@@ -145,6 +147,21 @@ export function SimulationPanel() {
         <button style={buttonStyle} onClick={() => void runSimulation(nSamples)}>
           Run
         </button>
+      </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+        <label style={{ fontSize: 12 }}>Rate:</label>
+        <input
+          type="number"
+          value={sampleRate}
+          onChange={(e) => setSampleRate(Number(e.target.value))}
+          style={{ width: 70, fontSize: 12, padding: 2 }}
+          min={1}
+          max={768000}
+          step={100}
+          title="Sample rate (Hz) used for simulation, spectrum axis, and export"
+          disabled={simSessionId !== null}
+        />
+        <span style={{ fontSize: 11, color: "#666" }}>Hz</span>
       </div>
 
       {simSessionId && (
@@ -272,6 +289,7 @@ export function SimulationPanel() {
                     label={key}
                     width={260}
                     height={80}
+                    sampleRate={sampleRate}
                   />
                 ))}
             </div>

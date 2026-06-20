@@ -7,12 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9]
+
 ### Added
 
 - **Export GDSP button**: "Export GDSP" toolbar button downloads the current graph as a `.gdsp` file. The backend endpoint and store action already existed but had no UI trigger.
 - **Bidirectional edge editing on canvas**: dsp nodes now expose one target handle per connectable input field (named after the field). Drawing, replacing, or deleting an edge writes the connection into the target node's `node_data`, so canvas edits persist through export, simulation, and compilation. Deleting a node also clears dangling references in surviving nodes. Each edge carries its target field (`target_handle`) so loaded graphs attach edges to the correct input.
 - **Continuous integration**: `.github/workflows/ci.yml` runs backend lint/format-check/type-check/tests (Python 3.10 + 3.13) and frontend tests + build on push and pull request.
 - **Frontend tests**: introduced Vitest with coverage of the graph store's edge-editing logic (`frontend/src/hooks/useGraph.test.ts`).
+- **Configurable sample rate**: a "Rate" control in the Simulation panel sets the graph's sample rate (Hz), which now drives simulation (previously hardcoded to 44100), the spectrum display's frequency axis, and JSON/GDSP export. The rate is loaded from the graph and locked while a simulation session is active (reset to change it).
 
 ### Security
 

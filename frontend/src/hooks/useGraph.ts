@@ -95,6 +95,7 @@ interface GraphState {
   setNodes: (nodes: Node<RFNodeData>[]) => void;
   setEdges: (edges: Edge[]) => void;
   selectNode: (node: Node<RFNodeData> | null) => void;
+  setSampleRate: (rate: number) => void;
   setInputSignal: (inputId: string, signalType: InputSignalType) => void;
   loadFromJson: (json: Record<string, unknown>) => Promise<void>;
   loadFromGdsp: (source: string) => Promise<void>;
@@ -263,6 +264,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
   selectNode: (node) => set({ selectedNode: node }),
+  setSampleRate: (rate) => set({ sampleRate: rate }),
   setInputSignal: (inputId, signalType) =>
     set((s) => ({ inputSignals: { ...s.inputSignals, [inputId]: signalType } })),
   clearError: () => set({ error: null }),
@@ -383,7 +385,13 @@ export const useGraph = create<GraphState>((set, get) => ({
     try {
       const signals = get().inputSignals;
       const inputs = Object.keys(signals).length > 0 ? signals : undefined;
-      const result = await simulateGraph(exported, nSamples, undefined, inputs);
+      const result = await simulateGraph(
+        exported,
+        nSamples,
+        get().sampleRate,
+        undefined,
+        inputs
+      );
       set({
         simulationResult: result,
         simSessionId: result.session_id,

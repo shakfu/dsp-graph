@@ -134,6 +134,44 @@ Low-cost addition.
 
 ---
 
+## Code review follow-ups
+
+Remaining items from the architecture/code review (the security, input-bounds,
+edge-editing, Safari-loop, CI, sample-rate, and dead-code items are already done).
+
+### Robustness & ops
+- [ ] Offload blocking work off the async event loop (`run_in_threadpool` or sync
+  handlers): native build, numpy simulation, and cache disk IO currently run
+  inline in `async def` handlers, so a single build freezes the whole server.
+- [ ] Document the single-worker assumption -- in-memory sessions, batch cache,
+  and the build-cache singleton are per-process; or move them to a shared store
+  to support multiple workers.
+- [ ] Gate `/api/build*` behind an explicit `--enable-build` flag and document the
+  localhost-only security model (defense-in-depth alongside the session token).
+
+### Tooling & maintainability
+- [ ] Frontend ESLint config + a `lint` target in the Makefile/CI (the inline
+  `eslint-disable` comments currently have nothing to attach to).
+- [ ] Decompose the ~800-line `useGraph` zustand store into composed slices
+  (graph / sim / build / editor) and split the large `GraphCanvas.tsx`
+  (extract `ContextMenu`, `NodePicker`, a keyboard hook).
+- [ ] Expand frontend tests beyond the store: Graph<->ReactFlow convert contract,
+  the hand-rolled FFT, and the ELK layout mapping.
+
+### Docs
+- [ ] README: add screenshots/GIF; complete the API table (`/api/graph/export/gdsp`
+  and the `/api/simulate/*` stateful routes are missing).
+- [ ] Add `CONTRIBUTING.md`.
+- [ ] CHANGELOG: add release dates and compare links per keepachangelog.
+- [ ] Refresh `CLAUDE.md` module-layout and API tables (add `cache.py`,
+  `api/generate.py`, `api/build.py`, `security.py`).
+
+### Features
+- [ ] Spectrum display: apply a window function and fix the Nyquist axis label for
+  zero-padded / non-power-of-2 FFT sizes (currently rectangular window + smearing).
+
+---
+
 ## Done
 
 - [x] Syntax-highlighted C++ preview panel
