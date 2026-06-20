@@ -20,7 +20,12 @@ from gen_dsp.graph.adapter import SUPPORTED_PLATFORMS
 from gen_dsp.graph.models import Graph
 from pydantic import BaseModel, Field
 
-from dsp_graph.api.generate import GenerateRequest, _validate_generate_request
+from dsp_graph.api.generate import (
+    GenerateRequest,
+    _validate_generate_request,
+    safe_filename,
+    validate_graph_name,
+)
 from dsp_graph.cache import BuildCache, cache_key, get_cache
 
 logger = logging.getLogger(__name__)
@@ -207,7 +212,7 @@ async def download_binary(req: GenerateRequest) -> StreamingResponse:
             detail=f"Build failed: {cr.response.stderr}",
         )
 
-    filename = cr.filename or "output"
+    filename = safe_filename(cr.filename or "output")
     return StreamingResponse(
         io.BytesIO(cr.data),
         media_type="application/octet-stream",
@@ -226,6 +231,7 @@ async def batch_build(req: BatchBuildRequest) -> BatchBuildResponse:
         g = Graph.model_validate(req.graph)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    validate_graph_name(g.name)
 
     batch_id = uuid.uuid4().hex
     artifacts: dict[str, tuple[str, str]] = {}  # platform -> (cache_key, filename)

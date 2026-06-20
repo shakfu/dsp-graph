@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Per-session token (anti-CSRF)**: the server now mints a per-process token, exposes it via `GET /api/session`, and requires it in the `X-DSP-Session` header on all state-changing (`POST`/`PUT`/`PATCH`/`DELETE`) `/api` requests. This prevents a malicious page in another browser tab from issuing cross-origin requests to the localhost server (notably triggering native builds via `/api/build*`). The SPA fetches the token at startup; safe (`GET`) requests are unaffected.
 - **Static path-traversal containment**: the SPA fallback handler now resolves the requested path and serves it only if it stays within the static directory, preventing `..`-style access to files outside the build output.
 - **Request input bounds**: `n_samples` (simulate/continue), buffer `data` length, and the batch-build `platforms` list now have explicit limits, and a 16 MiB body-size cap is enforced, closing trivial memory-exhaustion vectors.
+- **Graph-name sanitization**: graph names that reach filesystem paths (temp build dirs) or download headers are validated (path separators, parent refs, control chars, and quotes are rejected with 422), and `Content-Disposition` filenames are sanitized to a safe ASCII slug, preventing path traversal and header injection via `graph.name`.
 
 ### Fixed
 
@@ -51,8 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Canvas fitView no longer fires on unrelated store updates**: `fitView` previously re-triggered on every React re-render (e.g. simulation results, peek values) because `useReactFlow().fitView` has an unstable identity. Now uses a ref for the latest `fitView` and a topology key (sorted node IDs) so `fitView` only fires when nodes are actually added/removed/reloaded -- not on position changes from dragging or unrelated state updates.
 - **Buffer node filter**: fixed `op === "buf"` to `op === "buffer"` matching the gen-dsp model.
 
-- **Binary plugin compilation**: `POST /api/build/compile` compiles a graph to a binary plugin (`.clap`, `.vst3`, `.component`, etc.) using gen-dsp's `ProjectGenerator` and `Builder`. Returns success/failure status, stdout/stderr build logs, and output filename. `POST /api/build/binary` returns the compiled binary as a download.
-- **OS-filtered platform list**: `GET /build/platforms` now returns only platforms available on the host OS (e.g. macOS omits daisy/circle; Linux omits au/max; Windows returns only clap/sc/vst3).
+- **Binary plugin compilation**: `POST /api/build` compiles a graph to a binary plugin (`.clap`, `.vst3`, `.component`, etc.) using gen-dsp's `ProjectGenerator` and `Builder`. Returns success/failure status, stdout/stderr build logs, and output filename. `POST /api/build/binary` returns the compiled binary as a download.
+- **OS-filtered platform list**: `GET /api/generate/platforms` now returns only platforms available on the host OS (e.g. macOS omits daisy/circle; Linux omits au/max; Windows returns only clap/sc/vst3).
 - **Build output UI in BuildPanel**: success/failure status line (green/red), collapsible stdout/stderr build log, and "Download Binary" button on successful builds.
 - Tests: `TestCompileBuild` (invalid platform, invalid graph, valid build with cmake skip) and `test_platforms_os_filtered` (verifies OS-specific platform filtering).
 

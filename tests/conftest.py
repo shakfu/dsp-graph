@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -17,8 +18,17 @@ from gen_dsp.graph.models import (
     Phasor,
 )
 
+import dsp_graph.cache as cache_module
+from dsp_graph.cache import BuildCache
 from dsp_graph.security import SESSION_HEADER, SESSION_TOKEN
 from dsp_graph.server import app
+
+
+@pytest.fixture(autouse=True)
+def isolate_build_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the build-cache singleton at a temp dir so tests never read or
+    write the developer's real cache, and stay order-independent."""
+    monkeypatch.setattr(cache_module, "_cache_instance", BuildCache(root=tmp_path / "build_cache"))
 
 
 @pytest.fixture

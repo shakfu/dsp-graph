@@ -297,3 +297,59 @@ class TestBuild:
         assert isinstance(data["success"], bool)
         assert isinstance(data["stdout"], str)
         assert isinstance(data["stderr"], str)
+
+
+class TestBuildBinary:
+    @pytest.mark.skipif(not _has_cmake, reason="cmake not available")
+    def test_build_binary_returns_file_or_clean_failure(
+        self, client: TestClient, stereo_gain_json: dict[str, Any]
+    ) -> None:
+        resp = client.post(
+            "/api/build/binary",
+            json={"graph": stereo_gain_json, "platform": "clap"},
+        )
+        # 200 with a binary attachment on success; 400 with a build log on failure.
+        assert resp.status_code in (200, 400)
+        if resp.status_code == 200:
+            assert resp.headers["content-type"] == "application/octet-stream"
+            assert len(resp.content) > 0
+            cd = resp.headers.get("content-disposition", "")
+            assert "filename=" in cd
+            assert "/" not in cd and ".." not in cd  # sanitized filename
+
+    def test_build_binary_invalid_platform(
+        self, client: TestClient, stereo_gain_json: dict[str, Any]
+    ) -> None:
+        resp = client.post(
+            "/api/build/binary",
+            json={"graph": stereo_gain_json, "platform": "nonexistent"},
+        )
+        assert resp.status_code == 422
+
+
+class TestGraphNameValidation:
+    @pytest.mark.parametrize("bad_name", ["../evil", "a/b", "x\\y", 'q"uote', "..", ""])
+    @pytest.mark.parametrize("endpoint", ["/api/generate", "/api/build"])
+    def test_unsafe_graph_name_rejected(
+        self,
+        client: TestClient,
+        stereo_gain_json: dict[str, Any],
+        endpoint: str,
+        bad_name: str,
+    ) -> None:
+        graph = {**stereo_gain_json, "name": bad_name}
+        resp = client.post(endpoint, json={"graph": graph, "platform": "clap"})
+        assert resp.status_code == 422
+
+    def test_zip_download_filename_is_sanitized(
+        self, client: TestClient, stereo_gain_json: dict[str, Any]
+    ) -> None:
+        # A name with characters that are allowed but not filename-safe should be
+        # sanitized in the Content-Disposition header (no spaces, no '!').
+        graph = {**stereo_gain_json, "name": "my cool graph!"}
+        resp = client.post("/api/generate/zip", json={"graph": graph, "platform": "clap"})
+        assert resp.status_code == 200
+        cd = resp.headers["content-disposition"]
+        assert "my_cool_graph" in cd
+        assert " " not in cd.split("filename=")[1]
+        assert "!" not in cd

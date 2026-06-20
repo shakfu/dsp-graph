@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import platform
+import re
 import zipfile
 from typing import Any
 
@@ -62,6 +63,23 @@ class GenerateResponse(BaseModel):
     supported_platforms: list[str]
 
 
+# Graph names flow into filesystem paths (temp project dirs) and download
+# headers, so reject path separators, parent refs, control chars, and quotes.
+_UNSAFE_NAME = re.compile(r'[/\\\x00-\x1f"]|\.\.')
+
+
+def validate_graph_name(name: str) -> None:
+    """Raise 422 if a graph name is unsafe for filesystem paths or headers."""
+    if not name or _UNSAFE_NAME.search(name):
+        raise HTTPException(status_code=422, detail=f"Invalid graph name: {name!r}")
+
+
+def safe_filename(name: str) -> str:
+    """Return an ASCII filename component safe for Content-Disposition and disk."""
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]", "_", name).strip("._")
+    return cleaned or "graph"
+
+
 def _validate_generate_request(req: GenerateRequest) -> Graph:
     """Validate platform and parse graph, raising HTTPException on failure."""
     if req.platform not in SUPPORTED_PLATFORMS:
@@ -70,9 +88,11 @@ def _validate_generate_request(req: GenerateRequest) -> Graph:
             detail=f"Unsupported platform: {req.platform!r}. Valid: {sorted(SUPPORTED_PLATFORMS)}",
         )
     try:
-        return Graph.model_validate(req.graph)
+        g = Graph.model_validate(req.graph)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    validate_graph_name(g.name)
+    return g
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -121,7 +141,7 @@ async def generate_zip(req: GenerateRequest) -> StreamingResponse:
         zf.writestr("manifest.json", manifest)
     buf.seek(0)
 
-    filename = f"{g.name}_{req.platform}.zip"
+    filename = f"{safe_filename(g.name)}_{req.platform}.zip"
     return StreamingResponse(
         buf,
         media_type="application/zip",

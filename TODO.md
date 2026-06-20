@@ -30,7 +30,7 @@ author a DSP graph in the editor, then build it into a real plugin.
 - [x] Frontend "Plugin Target" panel: platform selector + "Generate" button
 - [x] Show generated artifacts (DSP C++, adapter, manifest) in panel
 - [x] Download zip of the complete plugin project
-- [x] Backend `/api/build/compile` endpoint: binary compilation via `Builder`
+- [x] Backend `/api/build` endpoint: binary compilation via `Builder`
 - [x] Backend `/api/build/binary` endpoint: download compiled binary
 - [x] Frontend build output UI: success/failure status, collapsible logs, download binary
 - [x] Batch build: generate for multiple platforms at once

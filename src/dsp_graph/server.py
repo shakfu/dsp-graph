@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from dsp_graph import __version__
 from dsp_graph.api import build as build_api
 from dsp_graph.api import compile as compile_api
 from dsp_graph.api import generate as generate_api
@@ -34,7 +35,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="dsp-graph", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="dsp-graph", version=__version__, lifespan=lifespan)
 
 # Reject oversized bodies first, then require a per-session token on
 # state-changing requests (anti-CSRF for the localhost server). Middleware runs
