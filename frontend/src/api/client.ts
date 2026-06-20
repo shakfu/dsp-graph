@@ -2,7 +2,6 @@ import type {
   ReactFlowGraph,
   ValidateResponse,
   SimulateResponse,
-  OptimizeResponse,
   OptimizePassResponse,
   OptimizePassName,
   CompileResponse,
@@ -183,24 +182,6 @@ export async function getBuffer(
     session_id: sessionId,
     buffer_id: bufferId,
   });
-}
-
-export async function setBuffer(
-  sessionId: string,
-  bufferId: string,
-  data: number[]
-): Promise<void> {
-  await post<{ status: string }>("/simulate/buffer/set", {
-    session_id: sessionId,
-    buffer_id: bufferId,
-    data,
-  });
-}
-
-export async function optimizeGraph(
-  graph: Record<string, unknown>
-): Promise<OptimizeResponse> {
-  return post<OptimizeResponse>("/optimize", { graph });
 }
 
 export async function optimizePass(

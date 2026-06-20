@@ -144,15 +144,9 @@ def _outputs_to_dict(outputs: dict[str, Any]) -> dict[str, list[float]]:
 @router.post("/simulate", response_model=SimulateResponse)
 async def simulate(req: SimulateRequest) -> SimulateResponse:
     """Run a per-sample simulation of the graph, optionally resuming a session."""
-    try:
-        from gen_dsp.graph.models import Graph
-        from gen_dsp.graph.simulate import SimState
-        from gen_dsp.graph.simulate import simulate as run_sim
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=501,
-            detail="Simulation requires numpy: pip install dsp-graph",
-        ) from exc
+    from gen_dsp.graph.models import Graph
+    from gen_dsp.graph.simulate import SimState
+    from gen_dsp.graph.simulate import simulate as run_sim
 
     try:
         g = Graph.model_validate(req.graph)
@@ -192,13 +186,7 @@ async def simulate(req: SimulateRequest) -> SimulateResponse:
 @router.post("/simulate/continue", response_model=SimulateResponse)
 async def simulate_continue(req: ContinueRequest) -> SimulateResponse:
     """Continue simulation from an existing session state."""
-    try:
-        from gen_dsp.graph.simulate import simulate as run_sim
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=501,
-            detail="Simulation requires numpy: pip install dsp-graph",
-        ) from exc
+    from gen_dsp.graph.simulate import simulate as run_sim
 
     state, graph = _get_session(req.session_id)
 
