@@ -38,6 +38,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **Safari: canvas no longer blanks on node drag**: the store<->local React Flow sync re-applied its own echoes, which round-tripped on every node move and overran React's update-depth limit in Safari (error #185), unmounting the canvas. The sync now ignores echoes of its own writes and only applies genuinely external store changes. Also reduced redundant work: handle re-measurement runs only when the node set or layout direction changes (not on every render), and node components read the type catalog via context instead of each subscribing to the store.
 
+- **Canvas input handles placement and routing**: per-field input handles now sit on the node's edge (spread along the axis matching the layout direction) instead of inside the node body, and the live-preview render path carries each edge's `target_handle` so edges attach to the correct input (e.g. `a` vs `b` of a `mul`) rather than all defaulting to the first handle.
+
 ## [0.1.8]
 
 ### Added

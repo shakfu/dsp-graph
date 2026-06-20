@@ -156,7 +156,7 @@ interface GraphState {
   selectNodeById: (id: string) => void;
 }
 
-function toFlowNodes(
+export function toFlowNodes(
   rfNodes: Array<{
     id: string;
     type: string;
@@ -172,7 +172,7 @@ function toFlowNodes(
   }));
 }
 
-function toFlowEdges(
+export function toFlowEdges(
   rfEdges: Array<{
     id: string;
     source: string;

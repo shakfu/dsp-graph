@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useGraph } from "./useGraph";
+import { useGraph, toFlowNodes, toFlowEdges } from "./useGraph";
 import { loadGraphGdspWithErrors } from "../api/client";
 import type { Node } from "@xyflow/react";
 import type { RFNodeData } from "../api/types";
@@ -48,19 +48,10 @@ export function useGdspLivePreview() {
             selectedGraphName && names.includes(selectedGraphName)
               ? selectedGraphName
               : null;
-          const newNodes = result.graph.nodes.map((n) => ({
-            id: n.id,
-            type: n.type,
-            position: n.position,
-            data: n.data,
-          }));
-          const newEdges = result.graph.edges.map((e) => ({
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            animated: e.animated ?? false,
-            label: e.label ?? undefined,
-          }));
+          // Reuse the shared mappers so this path can't drift from the
+          // load actions (e.g. dropping target_handle / sample_rate fields).
+          const newNodes = toFlowNodes(result.graph.nodes);
+          const newEdges = toFlowEdges(result.graph.edges);
 
           const topologyChanged =
             nodeIdSet(newNodes) !== nodeIdSet(state.nodes);
