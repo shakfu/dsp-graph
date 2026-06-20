@@ -54,6 +54,8 @@ interface GraphState {
   nodes: Node<RFNodeData>[];
   edges: Edge[];
   graphName: string;
+  sampleRate: number;
+  controlInterval: number;
   selectedNode: Node<RFNodeData> | null;
   simulationResult: SimulateResponse | null;
   simSessionId: string | null;
@@ -141,7 +143,11 @@ interface GraphState {
   addNode: (op: string, position: { x: number; y: number }) => void;
   deleteNodes: (ids: string[]) => void;
   deleteEdges: (ids: string[]) => void;
-  addEdge: (source: string, target: string) => void;
+  addEdge: (
+    source: string,
+    target: string,
+    targetHandle?: string | null
+  ) => void;
   duplicateNodes: (ids: string[]) => void;
   selectNodeById: (id: string) => void;
 }
@@ -167,6 +173,7 @@ function toFlowEdges(
     id: string;
     source: string;
     target: string;
+    target_handle?: string | null;
     animated?: boolean;
     label?: string;
   }>
@@ -175,12 +182,32 @@ function toFlowEdges(
     id: e.id,
     source: e.source,
     target: e.target,
+    targetHandle: e.target_handle ?? undefined,
     animated: e.animated ?? false,
     label: e.label ?? undefined,
   }));
 }
 
 const STORAGE_KEY = "dsp-graph:gdspSource";
+
+/** Value a node_data input field reverts to when disconnected. */
+function fieldDefault(
+  catalog: NodeTypeCatalog | null,
+  op: string | undefined,
+  field: string
+): unknown {
+  const def = op ? catalog?.[op]?.fields?.[field]?.default : undefined;
+  return def !== undefined ? def : 0;
+}
+
+/**
+ * Whether a node_data field holds a single scalar reference (so a connection
+ * may be written/cleared). Structured array/object reference fields are left
+ * untouched to avoid corrupting them.
+ */
+function isScalarRefField(value: unknown): boolean {
+  return value === undefined || value === null || typeof value !== "object";
+}
 
 function loadSavedSource(): string {
   try {
@@ -194,6 +221,8 @@ export const useGraph = create<GraphState>((set, get) => ({
   nodes: [],
   edges: [],
   graphName: "",
+  sampleRate: 44100,
+  controlInterval: 0,
   selectedNode: null,
   simulationResult: null,
   simSessionId: null,
@@ -250,6 +279,8 @@ export const useGraph = create<GraphState>((set, get) => ({
         nodes: toFlowNodes(rf.nodes),
         edges: toFlowEdges(rf.edges),
         graphName: rf.name,
+        sampleRate: rf.sample_rate,
+        controlInterval: rf.control_interval,
         selectedNode: null,
         simulationResult: null,
         optimizeResult: null,
@@ -271,6 +302,8 @@ export const useGraph = create<GraphState>((set, get) => ({
         nodes: toFlowNodes(rf.nodes),
         edges: toFlowEdges(rf.edges),
         graphName: rf.name,
+        sampleRate: rf.sample_rate,
+        controlInterval: rf.control_interval,
         gdspSource: source,
         selectedNode: null,
         simulationResult: null,
@@ -288,7 +321,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   },
 
   exportJson: async () => {
-    const { nodes, edges, graphName } = get();
+    const { nodes, edges, graphName, sampleRate, controlInterval } = get();
     try {
       const rf = {
         nodes: nodes.map((n) => ({
@@ -305,8 +338,8 @@ export const useGraph = create<GraphState>((set, get) => ({
           label: typeof e.label === "string" ? e.label : undefined,
         })),
         name: graphName,
-        sample_rate: 44100,
-        control_interval: 0,
+        sample_rate: sampleRate,
+        control_interval: controlInterval,
       };
       return await exportGraphJson(rf);
     } catch (e) {
@@ -316,7 +349,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   },
 
   exportGdsp: async () => {
-    const { nodes, edges, graphName } = get();
+    const { nodes, edges, graphName, sampleRate, controlInterval } = get();
     try {
       const rf = {
         nodes: nodes.map((n) => ({
@@ -333,8 +366,8 @@ export const useGraph = create<GraphState>((set, get) => ({
           label: typeof e.label === "string" ? e.label : undefined,
         })),
         name: graphName,
-        sample_rate: 44100,
-        control_interval: 0,
+        sample_rate: sampleRate,
+        control_interval: controlInterval,
       };
       const result = await exportGraphGdsp(rf);
       return result.source;
@@ -726,26 +759,104 @@ export const useGraph = create<GraphState>((set, get) => ({
   deleteNodes: (ids) => {
     get().pushUndo();
     const idSet = new Set(ids);
-    set((s) => ({
-      nodes: s.nodes.filter((n) => !idSet.has(n.id)),
-      edges: s.edges.filter((e) => !idSet.has(e.source) && !idSet.has(e.target)),
-      selectedNode: s.selectedNode && idSet.has(s.selectedNode.id) ? null : s.selectedNode,
-    }));
+    const catalog = get().nodeTypeCatalog;
+    set((s) => {
+      // Drop the nodes, and clear any node_data field in surviving nodes that
+      // referenced a deleted id (otherwise export produces dangling refs).
+      const remaining = s.nodes.filter((n) => !idSet.has(n.id));
+      const cleaned = remaining.map((n) => {
+        if (!n.data.node_data) return n;
+        let changed = false;
+        const nd: Record<string, unknown> = { ...n.data.node_data };
+        for (const [k, v] of Object.entries(nd)) {
+          if (typeof v === "string" && idSet.has(v)) {
+            nd[k] = fieldDefault(catalog, n.data.op as string | undefined, k);
+            changed = true;
+          }
+        }
+        return changed ? { ...n, data: { ...n.data, node_data: nd } } : n;
+      });
+      return {
+        nodes: cleaned,
+        edges: s.edges.filter((e) => !idSet.has(e.source) && !idSet.has(e.target)),
+        selectedNode:
+          s.selectedNode && idSet.has(s.selectedNode.id) ? null : s.selectedNode,
+      };
+    });
   },
 
   deleteEdges: (ids) => {
     get().pushUndo();
     const idSet = new Set(ids);
-    set((s) => ({
-      edges: s.edges.filter((e) => !idSet.has(e.id)),
-    }));
+    const catalog = get().nodeTypeCatalog;
+    set((s) => {
+      const removed = s.edges.filter((e) => idSet.has(e.id));
+      let nodes = s.nodes;
+      // Reset each disconnected scalar input field back to its default.
+      for (const e of removed) {
+        const field = e.targetHandle;
+        if (!field) continue;
+        nodes = nodes.map((n) =>
+          n.id === e.target &&
+          n.data.node_data &&
+          isScalarRefField(n.data.node_data[field])
+            ? {
+                ...n,
+                data: {
+                  ...n.data,
+                  node_data: {
+                    ...n.data.node_data,
+                    [field]: fieldDefault(
+                      catalog,
+                      n.data.op as string | undefined,
+                      field
+                    ),
+                  },
+                },
+              }
+            : n
+        );
+      }
+      return { nodes, edges: s.edges.filter((e) => !idSet.has(e.id)) };
+    });
   },
 
-  addEdge: (source, target) => {
+  addEdge: (source, target, targetHandle) => {
     get().pushUndo();
-    const id = `e_${source}_${target}_${Date.now().toString(36)}`;
-    const newEdge: Edge = { id, source, target };
-    set((s) => ({ edges: [...s.edges, newEdge] }));
+    const handle = targetHandle ?? null;
+    set((s) => {
+      // A field holds one reference: replace any existing edge into the same
+      // target+handle.
+      const filtered = s.edges.filter(
+        (e) => !(e.target === target && (e.targetHandle ?? null) === handle)
+      );
+      const id = `e_${source}_${target}_${handle ?? ""}_${Date.now().toString(36)}`;
+      const newEdge: Edge = {
+        id,
+        source,
+        target,
+        targetHandle: handle ?? undefined,
+      };
+      // Write the connection into the target node's node_data field (dsp/param
+      // targets). Output nodes have no node_data; their source is derived from
+      // edges on export.
+      const nodes = handle
+        ? s.nodes.map((n) =>
+            n.id === target &&
+            n.data.node_data &&
+            isScalarRefField(n.data.node_data[handle])
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    node_data: { ...n.data.node_data, [handle]: source },
+                  },
+                }
+              : n
+          )
+        : s.nodes;
+      return { edges: [...filtered, newEdge], nodes };
+    });
   },
 
   duplicateNodes: (ids) => {

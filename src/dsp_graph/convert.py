@@ -151,6 +151,9 @@ class RFEdge(BaseModel):
     id: str
     source: str
     target: str
+    # Name of the target node's input field this edge feeds (the React Flow
+    # target handle id). None for output-node edges, which have a single input.
+    target_handle: str | None = None
     animated: bool = False
     label: str | None = None
 
@@ -293,6 +296,7 @@ def graph_to_reactflow(graph: Graph) -> ReactFlowGraph:
                                 id=f"e{edge_id}",
                                 source=v,
                                 target=node.id,
+                                target_handle=field_name,
                                 animated=feedback,
                                 label="z^-1" if feedback else None,
                             )
@@ -307,6 +311,7 @@ def graph_to_reactflow(graph: Graph) -> ReactFlowGraph:
                                 id=f"e{edge_id}",
                                 source=item,
                                 target=node.id,
+                                target_handle=field_name,
                             )
                         )
                         edge_id += 1
@@ -319,6 +324,7 @@ def graph_to_reactflow(graph: Graph) -> ReactFlowGraph:
                     id=f"e{edge_id}",
                     source=value,
                     target=node.id,
+                    target_handle=field_name,
                     animated=feedback,
                     label="z^-1" if feedback else None,
                 )

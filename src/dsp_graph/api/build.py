@@ -18,7 +18,7 @@ from gen_dsp.core.builder import Builder  # type: ignore[import-untyped]
 from gen_dsp.core.project import ProjectConfig, ProjectGenerator  # type: ignore[import-untyped]
 from gen_dsp.graph.adapter import SUPPORTED_PLATFORMS
 from gen_dsp.graph.models import Graph
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from dsp_graph.api.generate import GenerateRequest, _validate_generate_request
 from dsp_graph.cache import BuildCache, cache_key, get_cache
@@ -169,7 +169,8 @@ def _compile_build_cached(
 
 class BatchBuildRequest(BaseModel):
     graph: dict[str, Any]
-    platforms: list[str]
+    # Cap the list to the number of known platforms; each triggers a native build.
+    platforms: list[str] = Field(min_length=1, max_length=len(SUPPORTED_PLATFORMS))
 
 
 class BatchBuildResponse(BaseModel):

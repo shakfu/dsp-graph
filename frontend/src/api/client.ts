@@ -15,11 +15,33 @@ import type {
 } from "./types";
 
 const BASE = "/api";
+const SESSION_HEADER = "X-DSP-Session";
+
+let sessionToken: string | null = null;
+
+/**
+ * Fetch the per-process session token. Must be called once at startup before
+ * any state-changing request; the token is attached to all such requests so
+ * the server can reject cross-origin (CSRF) POSTs.
+ */
+export async function initSession(): Promise<void> {
+  const resp = await fetch(`${BASE}/session`);
+  if (!resp.ok) throw new Error(`Failed to init session: ${resp.status}`);
+  const data = (await resp.json()) as { token: string };
+  sessionToken = data.token;
+}
+
+/** Headers for a JSON state-changing request, including the session token. */
+function mutationHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (sessionToken) headers[SESSION_HEADER] = sessionToken;
+  return headers;
+}
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const resp = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: mutationHeaders(),
     body: JSON.stringify(body),
   });
   if (!resp.ok) {
@@ -51,7 +73,7 @@ export async function loadGraphGdspWithErrors(
 ): Promise<{ graph?: ReactFlowGraph; error?: ParseError }> {
   const resp = await fetch(`${BASE}/graph/load/gdsp`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: mutationHeaders(),
     body: JSON.stringify({ source }),
     signal,
   });
@@ -210,7 +232,7 @@ export async function generateGraphZip(
 ): Promise<Blob> {
   const resp = await fetch(`${BASE}/generate/zip`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: mutationHeaders(),
     body: JSON.stringify({ graph, platform }),
   });
   if (!resp.ok) {
@@ -238,7 +260,7 @@ export async function downloadBuiltBinary(
 ): Promise<Blob> {
   const resp = await fetch(`${BASE}/build/binary`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: mutationHeaders(),
     body: JSON.stringify({ graph, platform }),
   });
   if (!resp.ok) {

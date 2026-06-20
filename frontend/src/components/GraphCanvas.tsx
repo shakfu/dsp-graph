@@ -8,7 +8,7 @@ import {
   useUpdateNodeInternals,
   useReactFlow,
 } from "@xyflow/react";
-import type { Node, Connection } from "@xyflow/react";
+import type { Node, Edge, Connection } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useEffect, useCallback, useMemo, useState, useRef, useLayoutEffect } from "react";
 import { toSvg } from "html-to-image";
@@ -18,7 +18,7 @@ import { DspNode } from "../nodes/DspNode";
 import { InputNode } from "../nodes/InputNode";
 import { OutputNode } from "../nodes/OutputNode";
 import { ParamNode } from "../nodes/ParamNode";
-import { DirectionContext } from "../hooks/useHandlePositions";
+import { DirectionContext, CatalogContext } from "../hooks/useHandlePositions";
 
 const nodeTypes = {
   dsp_node: DspNode,
@@ -28,14 +28,28 @@ const nodeTypes = {
 };
 
 /** Runs inside <ReactFlow> to access useUpdateNodeInternals. */
-function HandlePositionUpdater({ nodeIds, direction }: { nodeIds: string[]; direction: string }) {
+function HandlePositionUpdater({
+  nodeIds,
+  nodeIdsKey,
+  direction,
+}: {
+  nodeIds: string[];
+  nodeIdsKey: string;
+  direction: string;
+}) {
   const updateNodeInternals = useUpdateNodeInternals();
 
+  // Re-measure handles only when the set of nodes or the layout direction
+  // changes -- NOT on every render. Depending on the `nodeIds` array identity
+  // (new on each render) re-ran this on every position drag, which in Safari
+  // looped with React Flow's re-measurement until React's update-depth limit
+  // tripped (error #185), blanking the canvas.
   useEffect(() => {
     for (const id of nodeIds) {
       updateNodeInternals(id);
     }
-  }, [direction, nodeIds, updateNodeInternals]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeIdsKey, direction, updateNodeInternals]);
 
   return null;
 }
@@ -240,12 +254,22 @@ export function GraphCanvas() {
     [storeNodes]
   );
 
-  // Sync store -> local React Flow state
+  // Break the store<->local echo loop: remember what we last pushed to the
+  // store so the store->local effect can ignore our own echo and only apply
+  // genuinely external store changes (load, layout, optimize, edge edits).
+  // Without this, a node drag round-trips store<->local indefinitely, which in
+  // Safari overran React's update-depth limit (error #185) and blanked the canvas.
+  const pushedNodesRef = useRef<Node<RFNodeData>[] | null>(null);
+  const pushedEdgesRef = useRef<Edge[] | null>(null);
+
+  // Sync store -> local React Flow state (external changes only)
   useEffect(() => {
+    if (storeNodes === pushedNodesRef.current) return;
     setNodes(storeNodes);
   }, [storeNodes, setNodes]);
 
   useEffect(() => {
+    if (storeEdges === pushedEdgesRef.current) return;
     setEdges(storeEdges);
   }, [storeEdges, setEdges]);
 
@@ -274,10 +298,12 @@ export function GraphCanvas() {
 
   // Sync local React Flow state -> store (drag positions, selections, etc.)
   useEffect(() => {
+    pushedNodesRef.current = nodes as Node<RFNodeData>[];
     setStoreNodes(nodes as Node<RFNodeData>[]);
   }, [nodes, setStoreNodes]);
 
   useEffect(() => {
+    pushedEdgesRef.current = edges;
     setStoreEdges(edges);
   }, [edges, setStoreEdges]);
 
@@ -315,7 +341,11 @@ export function GraphCanvas() {
   const onConnect = useCallback(
     (connection: Connection) => {
       if (connection.source && connection.target) {
-        addEdgeToGraph(connection.source, connection.target);
+        addEdgeToGraph(
+          connection.source,
+          connection.target,
+          connection.targetHandle
+        );
       }
     },
     [addEdgeToGraph]
@@ -423,6 +453,8 @@ export function GraphCanvas() {
   );
 
   const nodeIds = nodes.map((n) => n.id);
+  // Value-stable key: changes only when the id set changes, not on drags.
+  const nodeIdsKey = nodeIds.join(",");
 
   const menuItemStyle: React.CSSProperties = {
     padding: "5px 12px",
@@ -433,6 +465,7 @@ export function GraphCanvas() {
 
   return (
     <DirectionContext.Provider value={direction}>
+     <CatalogContext.Provider value={nodeTypeCatalog}>
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} onKeyDown={onKeyDown} tabIndex={-1}>
         <ReactFlow
@@ -459,7 +492,11 @@ export function GraphCanvas() {
           deleteKeyCode={null}
           selectionKeyCode="Shift"
         >
-          <HandlePositionUpdater nodeIds={nodeIds} direction={direction} />
+          <HandlePositionUpdater
+            nodeIds={nodeIds}
+            nodeIdsKey={nodeIdsKey}
+            direction={direction}
+          />
           <Controls />
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         </ReactFlow>
@@ -557,6 +594,7 @@ export function GraphCanvas() {
           </>
         )}
       </div>
+     </CatalogContext.Provider>
     </DirectionContext.Provider>
   );
 }

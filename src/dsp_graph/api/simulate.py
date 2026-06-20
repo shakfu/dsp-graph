@@ -7,11 +7,16 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter()
 
 SIGNAL_TYPES = ("impulse", "sine", "noise", "ones")
+
+# Input bounds (prevent memory-exhaustion DoS from unbounded requests).
+_MAX_N_SAMPLES = 262_144  # ~6 s at 44.1 kHz; ample for a debugger
+_MAX_SAMPLE_RATE = 768_000
+_MAX_BUFFER_LEN = 1_048_576
 
 # Server-side session storage: session_id -> (SimState, Graph, last_access_time)
 _sessions: dict[str, tuple[Any, Any, float]] = {}
@@ -33,8 +38,8 @@ def _cleanup_sessions() -> None:
 
 class SimulateRequest(BaseModel):
     graph: dict[str, Any]
-    n_samples: int = 64
-    sample_rate: int = 44100
+    n_samples: int = Field(default=64, ge=1, le=_MAX_N_SAMPLES)
+    sample_rate: int = Field(default=44100, ge=1, le=_MAX_SAMPLE_RATE)
     params: dict[str, float] | None = None
     inputs: dict[str, str] | None = None
     session_id: str | None = None
@@ -47,7 +52,7 @@ class SimulateResponse(BaseModel):
 
 class ContinueRequest(BaseModel):
     session_id: str
-    n_samples: int = 64
+    n_samples: int = Field(default=64, ge=1, le=_MAX_N_SAMPLES)
     inputs: dict[str, str] | None = None
 
 
@@ -73,7 +78,7 @@ class BufferGetResponse(BaseModel):
 class BufferSetRequest(BaseModel):
     session_id: str
     buffer_id: str
-    data: list[float]
+    data: list[float] = Field(max_length=_MAX_BUFFER_LEN)
 
 
 class PeekResponse(BaseModel):

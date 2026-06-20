@@ -17,6 +17,11 @@ from dsp_graph.api import graph as graph_api
 from dsp_graph.api import layout as layout_api
 from dsp_graph.api import optimize as optimize_api
 from dsp_graph.api import simulate as simulate_api
+from dsp_graph.security import (
+    SESSION_TOKEN,
+    BodySizeLimitMiddleware,
+    SessionTokenMiddleware,
+)
 
 # Static files (React build output)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -30,6 +35,19 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="dsp-graph", version="0.2.0", lifespan=lifespan)
+
+# Reject oversized bodies first, then require a per-session token on
+# state-changing requests (anti-CSRF for the localhost server). Middleware runs
+# in reverse registration order, so the body-size check executes first.
+app.add_middleware(SessionTokenMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
+
+
+@app.get("/api/session")
+async def _session() -> dict[str, str]:
+    """Return the per-process session token (readable only same-origin)."""
+    return {"token": SESSION_TOKEN}
+
 
 # Mount API routers
 app.include_router(graph_api.router, prefix="/api/graph", tags=["graph"])
@@ -57,9 +75,11 @@ async def _index() -> FileResponse:
 @app.get("/{path:path}")
 async def _spa_fallback(path: str) -> FileResponse:
     """Serve static files or fall back to index.html for SPA routing."""
-    static_file = STATIC_DIR / path
-    if static_file.is_file():
-        return FileResponse(static_file)
+    static_root = STATIC_DIR.resolve()
+    candidate = (static_root / path).resolve()
+    # Reject path traversal: the resolved target must stay within STATIC_DIR.
+    if candidate.is_relative_to(static_root) and candidate.is_file():
+        return FileResponse(candidate)
     index = STATIC_DIR / "index.html"
     if index.exists():
         return FileResponse(index)

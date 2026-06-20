@@ -63,6 +63,8 @@ export function useGdspLivePreview() {
               nodes: newNodes,
               edges: newEdges,
               graphName: result.graph.name,
+              sampleRate: result.graph.sample_rate,
+              controlInterval: result.graph.control_interval,
               parseError: null,
               error: null,
             });
@@ -81,6 +83,8 @@ export function useGdspLivePreview() {
               nodes: merged,
               edges: newEdges,
               graphName: result.graph.name,
+              sampleRate: result.graph.sample_rate,
+              controlInterval: result.graph.control_interval,
               parseError: null,
               error: null,
             });

@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Export GDSP button**: "Export GDSP" toolbar button downloads the current graph as a `.gdsp` file. The backend endpoint and store action already existed but had no UI trigger.
+- **Bidirectional edge editing on canvas**: dsp nodes now expose one target handle per connectable input field (named after the field). Drawing, replacing, or deleting an edge writes the connection into the target node's `node_data`, so canvas edits persist through export, simulation, and compilation. Deleting a node also clears dangling references in surviving nodes. Each edge carries its target field (`target_handle`) so loaded graphs attach edges to the correct input.
+- **Continuous integration**: `.github/workflows/ci.yml` runs backend lint/format-check/type-check/tests (Python 3.10 + 3.13) and frontend tests + build on push and pull request.
+- **Frontend tests**: introduced Vitest with coverage of the graph store's edge-editing logic (`frontend/src/hooks/useGraph.test.ts`).
+
+### Security
+
+- **Per-session token (anti-CSRF)**: the server now mints a per-process token, exposes it via `GET /api/session`, and requires it in the `X-DSP-Session` header on all state-changing (`POST`/`PUT`/`PATCH`/`DELETE`) `/api` requests. This prevents a malicious page in another browser tab from issuing cross-origin requests to the localhost server (notably triggering native builds via `/api/build*`). The SPA fetches the token at startup; safe (`GET`) requests are unaffected.
+- **Static path-traversal containment**: the SPA fallback handler now resolves the requested path and serves it only if it stays within the static directory, preventing `..`-style access to files outside the build output.
+- **Request input bounds**: `n_samples` (simulate/continue), buffer `data` length, and the batch-build `platforms` list now have explicit limits, and a 16 MiB body-size cap is enforced, closing trivial memory-exhaustion vectors.
+
+### Fixed
+
+- **Export preserves sample rate**: exporting JSON/GDSP no longer hardcodes `sample_rate: 44100` / `control_interval: 0`. The values are now carried from the loaded graph (including via live preview), so non-44.1 kHz graphs round-trip correctly.
+- **Safari: canvas no longer blanks on node drag**: the store<->local React Flow sync re-applied its own echoes, which round-tripped on every node move and overran React's update-depth limit in Safari (error #185), unmounting the canvas. The sync now ignores echoes of its own writes and only applies genuinely external store changes. Also reduced redundant work: handle re-measurement runs only when the node set or layout direction changes (not on every render), and node components read the type catalog via context instead of each subscribing to the store.
 
 ## [0.1.8]
 

@@ -17,6 +17,7 @@ export interface RFEdge {
   id: string;
   source: string;
   target: string;
+  target_handle?: string | null;
   animated?: boolean;
   label?: string;
 }

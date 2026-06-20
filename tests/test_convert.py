@@ -55,6 +55,17 @@ class TestGraphToReactflow:
         assert colors["gain"] == PARAM_COLOR
         assert colors["scaled1"] == OP_COLORS["mul"]
 
+    def test_edges_carry_target_handle(self, stereo_gain: Graph) -> None:
+        """Each field-derived edge names the target node's input field, so the
+        frontend can attach it to the right handle and persist edits."""
+        rf = graph_to_reactflow(stereo_gain)
+        # scaled1 = mul(a=in1, b=gain): edges into scaled1 name fields a and b.
+        into_scaled1 = {(e.source, e.target_handle) for e in rf.edges if e.target == "scaled1"}
+        assert into_scaled1 == {("in1", "a"), ("gain", "b")}
+        # Output-node edges have no input field handle.
+        out_edges = [e for e in rf.edges if e.target == "out1"]
+        assert out_edges and all(e.target_handle is None for e in out_edges)
+
     def test_feedback_edge_marking(self, onepole: Graph) -> None:
         rf = graph_to_reactflow(onepole)
         animated_edges = [e for e in rf.edges if e.animated]

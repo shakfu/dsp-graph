@@ -17,12 +17,15 @@ from gen_dsp.graph.models import (
     Phasor,
 )
 
+from dsp_graph.security import SESSION_HEADER, SESSION_TOKEN
 from dsp_graph.server import app
 
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    c = TestClient(app)
+    c.headers.update({SESSION_HEADER: SESSION_TOKEN})
+    return c
 
 
 @pytest.fixture
