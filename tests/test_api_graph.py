@@ -159,6 +159,44 @@ class TestLoadGdsp:
         assert isinstance(detail["col"], int)
 
 
+class TestLoadGdspMultiGraph:
+    SOURCE = (
+        "graph gain_a {\n  in x\n  param g 0..2 = 0.5\n  y = x * g\n  out out1 = y\n}\n"
+        "graph gain_b {\n  in x\n  param g 0..2 = 1.5\n  y = x * g\n  out out1 = y\n}\n"
+    )
+
+    def test_returns_all_graph_names(self, client: TestClient) -> None:
+        resp = client.post("/api/graph/load/gdsp", json={"source": self.SOURCE})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["graph_names"] == ["gain_a", "gain_b"]
+
+    def test_defaults_to_last_graph(self, client: TestClient) -> None:
+        resp = client.post("/api/graph/load/gdsp", json={"source": self.SOURCE})
+        assert resp.json()["name"] == "gain_b"
+
+    def test_selects_requested_graph(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/graph/load/gdsp",
+            json={"source": self.SOURCE, "graph_name": "gain_a"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "gain_a"
+
+    def test_unknown_graph_name_falls_back_to_last(self, client: TestClient) -> None:
+        resp = client.post(
+            "/api/graph/load/gdsp",
+            json={"source": self.SOURCE, "graph_name": "does_not_exist"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "gain_b"
+
+    def test_single_graph_lists_one_name(self, client: TestClient) -> None:
+        source = "graph only {\n  in x\n  out out1 = x\n}"
+        resp = client.post("/api/graph/load/gdsp", json={"source": source})
+        assert resp.json()["graph_names"] == ["only"]
+
+
 class TestDot:
     def test_dot_output(self, client: TestClient, stereo_gain_json: dict[str, Any]) -> None:
         resp = client.post("/api/graph/dot", json={"graph": stereo_gain_json})

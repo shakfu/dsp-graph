@@ -54,6 +54,8 @@ interface GraphState {
   nodes: Node<RFNodeData>[];
   edges: Edge[];
   graphName: string;
+  graphNames: string[];
+  selectedGraphName: string | null;
   sampleRate: number;
   controlInterval: number;
   selectedNode: Node<RFNodeData> | null;
@@ -95,10 +97,11 @@ interface GraphState {
   setNodes: (nodes: Node<RFNodeData>[]) => void;
   setEdges: (edges: Edge[]) => void;
   selectNode: (node: Node<RFNodeData> | null) => void;
+  selectGraph: (name: string) => void;
   setSampleRate: (rate: number) => void;
   setInputSignal: (inputId: string, signalType: InputSignalType) => void;
   loadFromJson: (json: Record<string, unknown>) => Promise<void>;
-  loadFromGdsp: (source: string) => Promise<void>;
+  loadFromGdsp: (source: string, graphName?: string) => Promise<void>;
   exportJson: () => Promise<Record<string, unknown> | null>;
   exportGdsp: () => Promise<string | null>;
   runSimulation: (nSamples: number) => Promise<void>;
@@ -222,6 +225,8 @@ export const useGraph = create<GraphState>((set, get) => ({
   nodes: [],
   edges: [],
   graphName: "",
+  graphNames: [],
+  selectedGraphName: null,
   sampleRate: 44100,
   controlInterval: 0,
   selectedNode: null,
@@ -264,6 +269,14 @@ export const useGraph = create<GraphState>((set, get) => ({
   setNodes: (nodes) => set({ nodes }),
   setEdges: (edges) => set({ edges }),
   selectNode: (node) => set({ selectedNode: node }),
+  // Pick which graph of a multi-graph .gdsp source to display. The live-preview
+  // effect re-parses with this name; if live preview is off, reload explicitly.
+  selectGraph: (name) => {
+    set({ selectedGraphName: name });
+    if (!get().isLivePreview) {
+      void get().loadFromGdsp(get().gdspSource, name);
+    }
+  },
   setSampleRate: (rate) => set({ sampleRate: rate }),
   setInputSignal: (inputId, signalType) =>
     set((s) => ({ inputSignals: { ...s.inputSignals, [inputId]: signalType } })),
@@ -281,6 +294,8 @@ export const useGraph = create<GraphState>((set, get) => ({
         nodes: toFlowNodes(rf.nodes),
         edges: toFlowEdges(rf.edges),
         graphName: rf.name,
+        graphNames: [],
+        selectedGraphName: null,
         sampleRate: rf.sample_rate,
         controlInterval: rf.control_interval,
         selectedNode: null,
@@ -297,13 +312,17 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
-  loadFromGdsp: async (source) => {
+  loadFromGdsp: async (source, graphName) => {
     try {
-      const rf = await loadGraphGdsp(source);
+      const rf = await loadGraphGdsp(source, graphName);
+      const names = rf.graph_names ?? [];
       set({
         nodes: toFlowNodes(rf.nodes),
         edges: toFlowEdges(rf.edges),
         graphName: rf.name,
+        graphNames: names,
+        selectedGraphName:
+          graphName && names.includes(graphName) ? graphName : null,
         sampleRate: rf.sample_rate,
         controlInterval: rf.control_interval,
         gdspSource: source,

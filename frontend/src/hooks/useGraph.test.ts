@@ -46,6 +46,9 @@ describe("useGraph edge editing", () => {
       canUndo: false,
       canRedo: false,
       sampleRate: 44100,
+      graphNames: [],
+      selectedGraphName: null,
+      isLivePreview: true,
       nodeTypeCatalog: catalog,
     });
   });
@@ -106,6 +109,12 @@ describe("useGraph edge editing", () => {
     expect(useGraph.getState().nodes.map((n) => n.id)).toEqual(["m1"]);
     expect(nodeData("m1").a).toBe(0);
     expect(useGraph.getState().edges).toHaveLength(0);
+  });
+
+  it("selectGraph sets the selected graph name (live preview drives reload)", () => {
+    expect(useGraph.getState().selectedGraphName).toBeNull();
+    useGraph.getState().selectGraph("gain_a");
+    expect(useGraph.getState().selectedGraphName).toBe("gain_a");
   });
 
   it("setSampleRate updates the configured rate", () => {

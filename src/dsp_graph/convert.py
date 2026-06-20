@@ -166,6 +166,9 @@ class ReactFlowGraph(BaseModel):
     name: str = ""
     sample_rate: int = 44100
     control_interval: int = 0
+    # Names of all graphs defined in the source (for multi-graph .gdsp files).
+    # Empty/[name] for single-graph sources; populated by the gdsp load endpoint.
+    graph_names: list[str] = []
 
 
 # ---------------------------------------------------------------------------

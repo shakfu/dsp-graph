@@ -14,6 +14,7 @@ function nodeIdSet(nodes: Node<RFNodeData>[]): string {
 export function useGdspLivePreview() {
   const gdspSource = useGraph((s) => s.gdspSource);
   const isLivePreview = useGraph((s) => s.isLivePreview);
+  const selectedGraphName = useGraph((s) => s.selectedGraphName);
   const abortRef = useRef<AbortController | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -30,7 +31,8 @@ export function useGdspLivePreview() {
       try {
         const result = await loadGraphGdspWithErrors(
           gdspSource,
-          controller.signal
+          controller.signal,
+          selectedGraphName ?? undefined
         );
 
         if (controller.signal.aborted) return;
@@ -40,6 +42,12 @@ export function useGdspLivePreview() {
         if (result.error) {
           state.setParseError(result.error);
         } else if (result.graph) {
+          const names = result.graph.graph_names ?? [];
+          // Drop a stale selection that no longer exists in the edited source.
+          const reconciledSel =
+            selectedGraphName && names.includes(selectedGraphName)
+              ? selectedGraphName
+              : null;
           const newNodes = result.graph.nodes.map((n) => ({
             id: n.id,
             type: n.type,
@@ -63,6 +71,8 @@ export function useGdspLivePreview() {
               nodes: newNodes,
               edges: newEdges,
               graphName: result.graph.name,
+              graphNames: names,
+              selectedGraphName: reconciledSel,
               sampleRate: result.graph.sample_rate,
               controlInterval: result.graph.control_interval,
               parseError: null,
@@ -83,6 +93,8 @@ export function useGdspLivePreview() {
               nodes: merged,
               edges: newEdges,
               graphName: result.graph.name,
+              graphNames: names,
+              selectedGraphName: reconciledSel,
               sampleRate: result.graph.sample_rate,
               controlInterval: result.graph.control_interval,
               parseError: null,
@@ -102,5 +114,5 @@ export function useGdspLivePreview() {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [gdspSource, isLivePreview]);
+  }, [gdspSource, isLivePreview, selectedGraphName]);
 }

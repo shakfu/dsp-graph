@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Multi-graph .gdsp support**: the gdsp load endpoint now parses all graphs in a source via gen-dsp's `parse_multi` (previously only the last graph was kept). The response includes every graph's name, and a request may select which graph to return (`graph_name`, defaulting to the last). The toolbar shows a graph selector dropdown when a source defines more than one graph; selecting one re-renders it (live preview and explicit load both honor the selection).
+
 ## [0.1.9]
 
 ### Added

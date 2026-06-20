@@ -84,12 +84,11 @@ generic `except Exception`, losing `.line` and `.col`. Should get same structure
 treatment as `GDSPSyntaxError`. Directly improves the editor experience.
 
 ### Multi-graph GDSP parsing and composition
-`parse_multi(source)` returns `dict[str, Graph]` from a single source file.
-Currently `parse()` silently discards all but the last graph. The .gdsp syntax
-already supports block diagram algebra (`>>` series, `//` parallel) and subgraph
-instantiation via function-call syntax. This section covers the UI support for
-multi-graph workflows.
-- [ ] Graph selector dropdown when a .gdsp defines multiple graphs
+The gdsp load endpoint now uses `parse_multi(source)` (returns `dict[str, Graph]`)
+instead of `parse()`, so all graphs in a source are available. The .gdsp syntax
+also supports block diagram algebra (`>>` series, `//` parallel) and subgraph
+instantiation via function-call syntax. Remaining items cover deeper composition UX.
+- [x] Graph selector dropdown when a .gdsp defines multiple graphs
 - [ ] Subgraph library browsing from a multi-graph file
 - [ ] Autocomplete for graph names defined in the same file (for `>>`, `//`, call syntax)
 

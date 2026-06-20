@@ -62,18 +62,25 @@ export async function loadGraphJson(
   return post<ReactFlowGraph>("/graph/load/json", { graph });
 }
 
-export async function loadGraphGdsp(source: string): Promise<ReactFlowGraph> {
-  return post<ReactFlowGraph>("/graph/load/gdsp", { source });
+export async function loadGraphGdsp(
+  source: string,
+  graphName?: string
+): Promise<ReactFlowGraph> {
+  return post<ReactFlowGraph>("/graph/load/gdsp", {
+    source,
+    graph_name: graphName,
+  });
 }
 
 export async function loadGraphGdspWithErrors(
   source: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  graphName?: string
 ): Promise<{ graph?: ReactFlowGraph; error?: ParseError }> {
   const resp = await fetch(`${BASE}/graph/load/gdsp`, {
     method: "POST",
     headers: mutationHeaders(),
-    body: JSON.stringify({ source }),
+    body: JSON.stringify({ source, graph_name: graphName }),
     signal,
   });
   if (resp.ok) {

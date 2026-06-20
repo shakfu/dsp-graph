@@ -27,6 +27,9 @@ class LoadJsonRequest(BaseModel):
 
 class LoadGdspRequest(BaseModel):
     source: str
+    # Which graph to return from a multi-graph source. None selects the last
+    # graph defined (the conventional "main"), matching gen-dsp's parse().
+    graph_name: str | None = None
 
 
 class ValidationErrorDetail(BaseModel):
@@ -59,13 +62,16 @@ async def load_json(req: LoadJsonRequest) -> ReactFlowGraph:
 
 @router.post("/load/gdsp", response_model=ReactFlowGraph)
 async def load_gdsp(req: LoadGdspRequest) -> ReactFlowGraph:
-    """Parse a .gdsp DSL source string and return ReactFlow representation."""
+    """Parse a .gdsp DSL source and return one graph's ReactFlow representation.
+
+    Parses all graphs in the source (multi-graph files). Returns the requested
+    ``graph_name`` if given and present, else the last graph defined. The full
+    list of graph names is included in ``graph_names`` for a UI selector.
+    """
+    from gen_dsp.graph.dsl import GDSPSyntaxError, parse_multi
+
     try:
-        from gen_dsp.graph.dsl import GDSPSyntaxError, parse
-    except ImportError as exc:
-        raise HTTPException(status_code=501, detail="GDSP parser not available") from exc
-    try:
-        g = parse(req.source)
+        graphs = parse_multi(req.source)
     except GDSPSyntaxError as exc:
         # Extract raw message by stripping the "<file>:<line>:<col>: " prefix
         full = str(exc)
@@ -77,7 +83,17 @@ async def load_gdsp(req: LoadGdspRequest) -> ReactFlowGraph:
         ) from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return graph_to_reactflow(g)
+
+    names = list(graphs.keys())
+    # Select requested graph if present, else the last (matches parse()).
+    if req.graph_name is not None and req.graph_name in graphs:
+        selected = graphs[req.graph_name]
+    else:
+        selected = graphs[names[-1]]
+
+    rf = graph_to_reactflow(selected)
+    rf.graph_names = names
+    return rf
 
 
 @router.post("/validate", response_model=ValidateResponse)

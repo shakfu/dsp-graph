@@ -24,6 +24,9 @@ export function GraphToolbar() {
   const exportGdsp = useGraph((s) => s.exportGdsp);
   const exportSvg = useGraph((s) => s.exportSvg);
   const graphName = useGraph((s) => s.graphName);
+  const graphNames = useGraph((s) => s.graphNames);
+  const selectedGraphName = useGraph((s) => s.selectedGraphName);
+  const selectGraph = useGraph((s) => s.selectGraph);
   const error = useGraph((s) => s.error);
   const clearError = useGraph((s) => s.clearError);
   const showEditor = useGraph((s) => s.showEditor);
@@ -104,8 +107,23 @@ export function GraphToolbar() {
       }}
     >
       <strong style={{ fontSize: 14 }}>dsp-graph</strong>
-      {graphName && (
-        <span style={{ fontSize: 12, color: "#666" }}>/ {graphName}</span>
+      {graphNames.length > 1 ? (
+        <select
+          value={selectedGraphName ?? graphName}
+          onChange={(e) => selectGraph(e.target.value)}
+          style={{ fontSize: 12, padding: 2 }}
+          title="Select which graph to view (multi-graph source)"
+        >
+          {graphNames.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      ) : (
+        graphName && (
+          <span style={{ fontSize: 12, color: "#666" }}>/ {graphName}</span>
+        )
       )}
       <div style={{ flex: 1 }} />
       <button

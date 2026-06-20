@@ -28,6 +28,7 @@ export interface ReactFlowGraph {
   name: string;
   sample_rate: number;
   control_interval: number;
+  graph_names?: string[];
 }
 
 export interface ValidationErrorDetail {
