@@ -55,6 +55,7 @@ export function App() {
   const showEditor = useGraph((s) => s.showEditor);
   const showGraph = useGraph((s) => s.showGraph);
   const fetchNodeTypes = useGraph((s) => s.fetchNodeTypes);
+  const fetchConfig = useGraph((s) => s.fetchConfig);
   const setGdspSource = useGraph((s) => s.setGdspSource);
   const loadFromJson = useGraph((s) => s.loadFromJson);
   const setShowEditor = useGraph((s) => s.setShowEditor);
@@ -64,7 +65,8 @@ export function App() {
 
   useEffect(() => {
     void fetchNodeTypes();
-  }, [fetchNodeTypes]);
+    void fetchConfig();
+  }, [fetchNodeTypes, fetchConfig]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();

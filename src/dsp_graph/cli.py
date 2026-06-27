@@ -25,6 +25,11 @@ def main(argv: list[str] | None = None) -> None:
     serve_parser.add_argument("--port", type=int, default=8765)
     serve_parser.add_argument("--reload", action="store_true", help="Auto-reload on code changes")
     serve_parser.add_argument("--open", action="store_true", help="Open browser on start")
+    serve_parser.add_argument(
+        "--experimental",
+        action="store_true",
+        help="Enable experimental features (e.g. the gen~/GenExpr transpiler tab)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -33,7 +38,16 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     if args.command == "serve":
+        import os
+
         import uvicorn
+
+        from dsp_graph.config import EXPERIMENTAL_ENV
+
+        # Plumb the flag through the environment so it reaches the app process
+        # (and uvicorn --reload child processes, which inherit the environment).
+        if args.experimental:
+            os.environ[EXPERIMENTAL_ENV] = "1"
 
         if args.open:
             url = f"http://{args.host}:{args.port}"

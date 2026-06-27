@@ -5,12 +5,15 @@ import type {
   OptimizePassResponse,
   OptimizePassName,
   CompileResponse,
+  GenExprResponse,
   GenerateResponse,
   BuildResponse,
   BatchBuildResponse,
   PeekResponse,
   ParseError,
   NodeTypeCatalog,
+  AppConfig,
+  MaxpatResponse,
 } from "./types";
 
 const BASE = "/api";
@@ -28,6 +31,13 @@ export async function initSession(): Promise<void> {
   if (!resp.ok) throw new Error(`Failed to init session: ${resp.status}`);
   const data = (await resp.json()) as { token: string };
   sessionToken = data.token;
+}
+
+/** Fetch runtime feature flags (e.g. whether experimental features are on). */
+export async function getConfig(): Promise<AppConfig> {
+  const resp = await fetch(`${BASE}/config`);
+  if (!resp.ok) throw new Error(`Failed to fetch config: ${resp.status}`);
+  return (await resp.json()) as AppConfig;
 }
 
 /** Headers for a JSON state-changing request, including the session token. */
@@ -207,6 +217,18 @@ export async function compileGraph(
   graph: Record<string, unknown>
 ): Promise<CompileResponse> {
   return post<CompileResponse>("/compile", { graph });
+}
+
+export async function transpileGenExpr(
+  graph: Record<string, unknown>
+): Promise<GenExprResponse> {
+  return post<GenExprResponse>("/genexpr", { graph });
+}
+
+export async function exportMaxpat(
+  graph: Record<string, unknown>
+): Promise<MaxpatResponse> {
+  return post<MaxpatResponse>("/graph/export/maxpat", { graph });
 }
 
 export async function generateGraph(

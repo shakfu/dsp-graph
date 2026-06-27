@@ -64,6 +64,19 @@ export interface CompileResponse {
   cpp_source: string;
 }
 
+export interface GenExprResponse {
+  genexpr_source: string;
+}
+
+export interface AppConfig {
+  experimental: boolean;
+}
+
+export interface MaxpatResponse {
+  maxpat_json: string;
+  filename: string;
+}
+
 export interface GenerateResponse {
   dsp_cpp: string;
   adapter_cpp: string;

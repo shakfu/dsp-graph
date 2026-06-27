@@ -17,100 +17,114 @@ from gen_dsp.graph.toposort import toposort
 from pydantic import BaseModel, TypeAdapter
 
 # ---------------------------------------------------------------------------
-# Color map: op string -> hex color (derived from gen_dsp.graph.visualize)
+# Color map: op string -> hex color
 # ---------------------------------------------------------------------------
+#
+# Colors are keyed by node *class* (mirroring gen_dsp.graph.visualize._node_attrs,
+# which colors by isinstance) and the per-op OP_COLORS map below is derived from
+# this by walking the Node discriminated union. Deriving rather than hardcoding
+# each op string keeps the editor in step with gen-dsp: a new op added to an
+# existing class (e.g. another BinOp/UnaryOp) is colored automatically, and a
+# brand-new node *class* fails loudly at import (see _build_op_colors) instead of
+# silently rendering white.
 
-OP_COLORS: dict[str, str] = {
-    # Arithmetic / logic
-    "add": "#fff3cd",
-    "sub": "#fff3cd",
-    "mul": "#fff3cd",
-    "div": "#fff3cd",
-    "mod": "#fff3cd",
-    "pow": "#fff3cd",
-    "min": "#fff3cd",
-    "max": "#fff3cd",
-    "abs": "#fff3cd",
-    "neg": "#fff3cd",
-    "floor": "#fff3cd",
-    "ceil": "#fff3cd",
-    "sqrt": "#fff3cd",
-    "exp": "#fff3cd",
-    "log": "#fff3cd",
-    "log2": "#fff3cd",
-    "log10": "#fff3cd",
-    "sin": "#fff3cd",
-    "cos": "#fff3cd",
-    "tan": "#fff3cd",
-    "tanh": "#fff3cd",
-    "sign": "#fff3cd",
-    "atan2": "#fff3cd",
-    "clamp": "#fff3cd",
-    "wrap": "#fff3cd",
-    "fold": "#fff3cd",
-    "mix": "#fff3cd",
-    "scale": "#fff3cd",
-    "pass": "#fff3cd",
-    "smoothstep": "#fff3cd",
-    "gate_route": "#fff3cd",
-    "gate_out": "#fff3cd",
-    "selector": "#fff3cd",
-    # Comparison / selection
-    "gt": "#fff3cd",
-    "lt": "#fff3cd",
-    "gte": "#fff3cd",
-    "lte": "#fff3cd",
-    "eq": "#fff3cd",
-    "neq": "#fff3cd",
-    "select": "#fff3cd",
+CLASS_COLORS: dict[str, str] = {
+    # Arithmetic / logic / routing
+    "BinOp": "#fff3cd",
+    "UnaryOp": "#fff3cd",
+    "Clamp": "#fff3cd",
+    "Compare": "#fff3cd",
+    "Select": "#fff3cd",
+    "Wrap": "#fff3cd",
+    "Fold": "#fff3cd",
+    "Mix": "#fff3cd",
+    "Scale": "#fff3cd",
+    "Pass": "#fff3cd",
+    "Smoothstep": "#fff3cd",
+    "GateRoute": "#fff3cd",
+    "GateOut": "#fff3cd",
+    "Selector": "#fff3cd",
     # Constants
-    "constant": "#e9ecef",
-    "named_constant": "#e9ecef",
-    "samplerate": "#e9ecef",
-    # State / memory
-    "history": "#fde0c8",
-    "delay_line": "#fde0c8",
-    "delay_read": "#fde0c8",
-    "delay_write": "#fde0c8",
-    "delta": "#fde0c8",
-    "change": "#fde0c8",
-    "sample_hold": "#fde0c8",
-    "latch": "#fde0c8",
-    "accum": "#fde0c8",
-    "mulaccum": "#fde0c8",
-    "counter": "#fde0c8",
-    "elapsed": "#fde0c8",
-    "rate_div": "#fde0c8",
-    "smooth_param": "#fde0c8",
-    "slide": "#fde0c8",
-    "adsr": "#fde0c8",
+    "Constant": "#e9ecef",
+    "NamedConstant": "#e9ecef",
+    "SampleRate": "#e9ecef",
+    # State / memory / timing
+    "History": "#fde0c8",
+    "DelayLine": "#fde0c8",
+    "DelayRead": "#fde0c8",
+    "DelayWrite": "#fde0c8",
+    "Delta": "#fde0c8",
+    "Change": "#fde0c8",
+    "SampleHold": "#fde0c8",
+    "Latch": "#fde0c8",
+    "Accum": "#fde0c8",
+    "MulAccum": "#fde0c8",
+    "Counter": "#fde0c8",
+    "Elapsed": "#fde0c8",
+    "RateDiv": "#fde0c8",
+    "SmoothParam": "#fde0c8",
+    "Slide": "#fde0c8",
+    "ADSR": "#fde0c8",
     # Filters
-    "biquad": "#fde0c8",
-    "svf": "#fde0c8",
-    "onepole": "#fde0c8",
-    "dcblock": "#fde0c8",
-    "allpass": "#fde0c8",
-    # Oscillators
-    "phasor": "#e2d5f1",
-    "noise": "#e2d5f1",
-    "sinosc": "#e2d5f1",
-    "triosc": "#e2d5f1",
-    "sawosc": "#e2d5f1",
-    "pulseosc": "#e2d5f1",
+    "Biquad": "#fde0c8",
+    "SVF": "#fde0c8",
+    "OnePole": "#fde0c8",
+    "DCBlock": "#fde0c8",
+    "Allpass": "#fde0c8",
     # Buffers / wavetables
-    "buffer": "#fde0c8",
-    "buf_read": "#fde0c8",
-    "buf_write": "#fde0c8",
-    "buf_size": "#fde0c8",
-    "splat": "#fde0c8",
-    "cycle": "#fde0c8",
-    "wave": "#fde0c8",
-    "lookup": "#fde0c8",
+    "Buffer": "#fde0c8",
+    "BufRead": "#fde0c8",
+    "BufWrite": "#fde0c8",
+    "BufSize": "#fde0c8",
+    "Splat": "#fde0c8",
+    "Cycle": "#fde0c8",
+    "Wave": "#fde0c8",
+    "Lookup": "#fde0c8",
+    # Oscillators
+    "Phasor": "#e2d5f1",
+    "Noise": "#e2d5f1",
+    "SinOsc": "#e2d5f1",
+    "TriOsc": "#e2d5f1",
+    "SawOsc": "#e2d5f1",
+    "PulseOsc": "#e2d5f1",
     # Utility
-    "peek": "#d4edda",
+    "Peek": "#d4edda",
     # Subgraph
-    "subgraph": "#cce5ff",
+    "Subgraph": "#cce5ff",
 }
+
+
+def _build_op_colors() -> dict[str, str]:
+    """Map every op string in the Node union to its node class's color.
+
+    Walks the Node discriminated-union JSON schema, reading each member's ``op``
+    literal (``const`` for single-op classes, ``enum`` for multi-op classes such
+    as BinOp/UnaryOp/Compare/NamedConstant), and assigns the color registered for
+    that class in :data:`CLASS_COLORS`. A node class present in the union but
+    missing from CLASS_COLORS raises ``RuntimeError`` at import so a gen-dsp
+    addition cannot silently fall through to the default color.
+    """
+    schema = TypeAdapter(Node).json_schema()
+    defs = schema.get("$defs", {})
+    colors: dict[str, str] = {}
+    for class_name, defn in defs.items():
+        op_prop = defn.get("properties", {}).get("op")
+        if op_prop is None:
+            # Not a node member (AudioInput/AudioOutput/Param/Graph).
+            continue
+        if class_name not in CLASS_COLORS:
+            raise RuntimeError(
+                f"gen_dsp node class {class_name!r} has no entry in "
+                "dsp_graph.convert.CLASS_COLORS; add one to track gen-dsp."
+            )
+        color = CLASS_COLORS[class_name]
+        ops = op_prop.get("enum") or ([op_prop["const"]] if "const" in op_prop else [])
+        for op in ops:
+            colors[op] = color
+    return colors
+
+
+OP_COLORS: dict[str, str] = _build_op_colors()
 
 INPUT_COLOR = "#d4edda"
 OUTPUT_COLOR = "#f8d7da"

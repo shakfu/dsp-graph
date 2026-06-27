@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0]
+
+### Added
+
+- **gen~/GenExpr transpiler (experimental)**: a "GenExpr" editor tab re-emits the current graph as gen~ `codebox` source for pasting into Max/MSP, backed by `POST /api/genexpr` (via gen-dsp's `transpile_to_genexpr`). The tab offers Copy and Download (`.genexpr`) actions. Nodes with no faithful gen~ equivalent yield a clear 400 explaining the limitation. Experimental and off by default: the tab is hidden and the endpoint returns 404 unless the server is started with `--experimental`.
+
+- **Max `.maxpat` test-patch export (experimental)**: a "Download .maxpat" action (and `POST /api/graph/export/maxpat`) wraps the transpiled gen~ codebox in a ready-to-open Max test patch built with py2max -- a self-contained `gen.codebox~` wired to a minimal rig (each param as a bounded float box driving a `name $1` message; each audio input fed from an `sfplay~` on a built-in sound; outputs driving `ezdac~`). Shares the experimental gate (404 unless `--experimental`).
+
+- **Experimental feature flag**: new `--experimental` CLI flag on `dsp-graph serve`, plumbed through the `DSP_GRAPH_EXPERIMENTAL` environment variable (so uvicorn `--reload` child processes inherit it) and read at call time via `dsp_graph.config.is_experimental()`. `GET /api/config` exposes the flags so the frontend can gate experimental UI; the SPA fetches them at startup.
+
+- **Tests**: `TestServeExperimentalFlag` (flag sets the env / default leaves it off) and `TestOpColors` (every op has a color, none falls through to the default, renamed gen-dsp ops resolve to their class color), plus endpoint coverage in `tests/test_api_genexpr.py` and `tests/test_api_maxpat.py`.
+
+### Changed
+
+- **Color map derived from node classes**: `OP_COLORS` (op string -> hex) is now built at import by walking the `Node` discriminated-union schema and assigning each op the color registered for its node *class* in the new `CLASS_COLORS` map (mirroring `gen_dsp.graph.visualize._node_attrs`). A new op added to an existing class is colored automatically, and a brand-new node class missing from `CLASS_COLORS` raises at import instead of silently rendering white. This also absorbs gen-dsp's op renames (e.g. `delay_line` -> `delay`, `smooth_param` -> `smooth`) and `NamedConstant`'s op becoming an enum of constant names.
+
+- **Dependencies**: bumped `gen-dsp[graph]` to `>=0.3.1` and added `py2max>=0.3.1` (Max `.maxpat` generation).
+
 ## [0.1.9]
 
 ### Added

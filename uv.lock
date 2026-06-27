@@ -386,6 +386,7 @@ dependencies = [
     { name = "gen-dsp", extra = ["graph"] },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "py2max" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -402,8 +403,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "gen-dsp", extras = ["graph"], specifier = ">=0.1.15" },
+    { name = "gen-dsp", extras = ["graph"], specifier = ">=0.3.1" },
     { name = "numpy", specifier = ">=1.24" },
+    { name = "py2max", specifier = ">=0.3.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
 ]
 
@@ -422,7 +424,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -447,11 +449,11 @@ wheels = [
 
 [[package]]
 name = "gen-dsp"
-version = "0.1.15"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e7/b9/1789bcfb036316e7ba5b7378bbd20bbee88c2274605d27f83cd1de7a2ba6/gen_dsp-0.1.15.tar.gz", hash = "sha256:176f1a917121048f651be9d8f400cf37a573a3d88c266adc43c52eb8855b5336", size = 260561, upload-time = "2026-03-03T13:52:57.41Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/05/1a/0c82f270c92d1f38274d6489186689bcd55a96245d00ed1fa94defea6607/gen_dsp-0.3.1.tar.gz", hash = "sha256:2e07b508159af57e1ff7d0847c38f0a0265aea7cc829a14b6dea3fe54afb9dd1", size = 342545, upload-time = "2026-06-27T15:02:47.35Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/d3/62d4154ec635a28406519161faf36b83e3d10bf9d9cd1a59088eaa9add7a/gen_dsp-0.1.15-py3-none-any.whl", hash = "sha256:fdea05216a59f82caeb8ed401851c741d0e1290b2b6b49239e7c34b0b9b366ff", size = 338595, upload-time = "2026-03-03T13:52:55.711Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/27/d4b5fc4b993c52a69ca645f4e066a35fdf5282eef29af47fbdfb5212adf7/gen_dsp-0.3.1-py3-none-any.whl", hash = "sha256:983a8078118cf88ebee8caf8e4c0d4dfa96629bbed89601d9f4484580fb77522", size = 435447, upload-time = "2026-06-27T15:02:45.894Z" },
 ]
 
 [package.optional-dependencies]
@@ -1008,6 +1010,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "py2max"
+version = "0.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e7/1d/efd3a4feba168f151b79fb37a512995129d636f2195df438647890279fd6/py2max-0.3.1.tar.gz", hash = "sha256:b9dd06e2b0f16541486bcb18909b0ddcb00c185f5a11e4424dd6484b78b8e6ef", size = 1270622, upload-time = "2026-06-27T22:41:20.442Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/7e/0bcea84ca541a11d44938fb3c2ec3352fa31322aefaefeba79795d9136b7/py2max-0.3.1-py3-none-any.whl", hash = "sha256:34d24455d9dc7b6260bd599b51ba0be4f12c28e77a2d9f831a63fac9f453e7ac", size = 1146876, upload-time = "2026-06-27T22:41:18.595Z" },
 ]
 
 [[package]]

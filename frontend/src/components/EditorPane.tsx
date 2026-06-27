@@ -14,7 +14,7 @@ import { gdspGoToDef } from "../utils/gdspGoToDef";
 
 const cppExtensions = [cpp(), EditorState.readOnly.of(true)];
 
-type Tab = "gdsp" | "cpp";
+type Tab = "gdsp" | "cpp" | "genexpr";
 
 const tabStyle = (active: boolean): React.CSSProperties => ({
   padding: "5px 14px",
@@ -34,6 +34,10 @@ export function EditorPane() {
   const isLivePreview = useGraph((s) => s.isLivePreview);
   const compileResult = useGraph((s) => s.compileResult);
   const runCompile = useGraph((s) => s.runCompile);
+  const genexprResult = useGraph((s) => s.genexprResult);
+  const runGenExpr = useGraph((s) => s.runGenExpr);
+  const exportMaxpatFile = useGraph((s) => s.exportMaxpatFile);
+  const experimental = useGraph((s) => s.experimental);
   const nodes = useGraph((s) => s.nodes);
   const selectNodeById = useGraph((s) => s.selectNodeById);
 
@@ -112,6 +116,41 @@ export function EditorPane() {
     [compileResult]
   );
 
+  const genexprSource = useMemo(
+    () => genexprResult?.genexpr_source ?? "",
+    [genexprResult]
+  );
+
+  const handleCopyGenexpr = () => {
+    if (genexprResult?.genexpr_source) {
+      void navigator.clipboard.writeText(genexprResult.genexpr_source);
+    }
+  };
+
+  const handleDownloadGenexpr = () => {
+    if (!genexprResult?.genexpr_source) return;
+    const filename = `${graphName || "graph"}.genexpr`;
+    const blob = new Blob([genexprResult.genexpr_source], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadMaxpat = async () => {
+    const result = await exportMaxpatFile();
+    if (!result) return;
+    const blob = new Blob([result.maxpat_json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = result.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const onCreateEditor = useCallback(() => {
     // EditorView is accessible via ref after creation -- no extra work needed
   }, []);
@@ -156,9 +195,17 @@ export function EditorPane() {
         <button style={tabStyle(activeTab === "cpp")} onClick={() => setActiveTab("cpp")}>
           C++
         </button>
+        {experimental && (
+          <button
+            style={tabStyle(activeTab === "genexpr")}
+            onClick={() => setActiveTab("genexpr")}
+          >
+            GenExpr
+          </button>
+        )}
         <div style={{ flex: 1 }} />
         {activeTab === "gdsp" && (
-          <div style={{ paddingRight: 8 }}>
+          <div style={{ paddingRight: 8, display: "flex", gap: 4 }}>
             <button
               onClick={() => {
                 void runCompile().then(() => setActiveTab("cpp"));
@@ -178,6 +225,27 @@ export function EditorPane() {
             >
               Compile
             </button>
+            {experimental && (
+              <button
+                onClick={() => {
+                  void runGenExpr().then(() => setActiveTab("genexpr"));
+                }}
+                disabled={nodes.length === 0}
+                style={{
+                  padding: "2px 10px",
+                  fontSize: 11,
+                  background: "#61afef",
+                  color: "#282c34",
+                  border: "none",
+                  borderRadius: 3,
+                  cursor: nodes.length === 0 ? "default" : "pointer",
+                  fontWeight: 600,
+                  opacity: nodes.length === 0 ? 0.4 : 1,
+                }}
+              >
+                GenExpr
+              </button>
+            )}
           </div>
         )}
         {activeTab === "cpp" && compileResult && (
@@ -209,6 +277,55 @@ export function EditorPane() {
               }}
             >
               Download
+            </button>
+          </div>
+        )}
+        {experimental && activeTab === "genexpr" && genexprResult && (
+          <div style={{ paddingRight: 8, display: "flex", gap: 4 }}>
+            <button
+              onClick={handleCopyGenexpr}
+              style={{
+                padding: "2px 10px",
+                fontSize: 11,
+                background: "transparent",
+                color: "#abb2bf",
+                border: "1px solid #3e4451",
+                borderRadius: 3,
+                cursor: "pointer",
+              }}
+            >
+              Copy
+            </button>
+            <button
+              onClick={handleDownloadGenexpr}
+              style={{
+                padding: "2px 10px",
+                fontSize: 11,
+                background: "transparent",
+                color: "#abb2bf",
+                border: "1px solid #3e4451",
+                borderRadius: 3,
+                cursor: "pointer",
+              }}
+            >
+              Download
+            </button>
+            <button
+              onClick={() => {
+                void handleDownloadMaxpat();
+              }}
+              title="Download a Max/MSP test patch wrapping this gen~ codebox"
+              style={{
+                padding: "2px 10px",
+                fontSize: 11,
+                background: "transparent",
+                color: "#abb2bf",
+                border: "1px solid #3e4451",
+                borderRadius: 3,
+                cursor: "pointer",
+              }}
+            >
+              Download .maxpat
             </button>
           </div>
         )}
@@ -262,6 +379,36 @@ export function EditorPane() {
                 }}
               >
                 Click "Compile" to generate C++ source.
+              </div>
+            )}
+          </>
+        )}
+        {experimental && activeTab === "genexpr" && (
+          <>
+            {genexprSource ? (
+              <CodeMirror
+                value={genexprSource}
+                theme={oneDark}
+                extensions={cppExtensions}
+                height="100%"
+                style={{ height: "100%" }}
+                editable={false}
+                basicSetup={{
+                  lineNumbers: true,
+                  foldGutter: true,
+                  highlightActiveLine: false,
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  padding: 24,
+                  color: "#636d83",
+                  fontSize: 13,
+                  textAlign: "center",
+                }}
+              >
+                Click "GenExpr" to transpile to a gen~ codebox for Max/MSP.
               </div>
             )}
           </>

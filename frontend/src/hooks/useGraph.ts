@@ -5,6 +5,8 @@ import type {
   SimulateResponse,
   OptimizeResponse,
   CompileResponse,
+  GenExprResponse,
+  MaxpatResponse,
   GenerateResponse,
   BuildResponse,
   ValidateResponse,
@@ -27,6 +29,8 @@ import {
   getBuffer,
   optimizePass,
   compileGraph,
+  transpileGenExpr,
+  exportMaxpat,
   generateGraph,
   generateGraphZip,
   buildGraph,
@@ -36,6 +40,7 @@ import {
   downloadBatchZip,
   validateGraph,
   getNodeTypes,
+  getConfig,
 } from "../api/client";
 import {
   elkLayout,
@@ -64,6 +69,7 @@ interface GraphState {
   peekValues: Record<string, number> | null;
   optimizeResult: OptimizeResponse | null;
   compileResult: CompileResponse | null;
+  genexprResult: GenExprResponse | null;
   generateResult: GenerateResponse | null;
   buildResult: BuildResponse | null;
   buildPlatforms: string[];
@@ -92,6 +98,7 @@ interface GraphState {
 
   // Node catalog
   nodeTypeCatalog: NodeTypeCatalog | null;
+  experimental: boolean;
 
   setExportSvg: (fn: (() => Promise<void>) | null) => void;
   setNodes: (nodes: Node<RFNodeData>[]) => void;
@@ -113,6 +120,8 @@ interface GraphState {
   resetSimulation: () => Promise<void>;
   runOptimize: () => Promise<void>;
   runCompile: () => Promise<void>;
+  runGenExpr: () => Promise<void>;
+  exportMaxpatFile: () => Promise<MaxpatResponse | null>;
   runGenerate: (platform: string) => Promise<void>;
   runBuild: (platform: string) => Promise<void>;
   downloadGenerateZip: (platform: string) => Promise<void>;
@@ -133,6 +142,7 @@ interface GraphState {
   setShowEditor: (show: boolean) => void;
   setShowGraph: (show: boolean) => void;
   fetchNodeTypes: () => Promise<void>;
+  fetchConfig: () => Promise<void>;
 
   // Undo/redo
   undoStack: UndoSnapshot[];
@@ -236,6 +246,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   bufferData: {},
   optimizeResult: null,
   compileResult: null,
+  genexprResult: null,
   generateResult: null,
   buildResult: null,
   buildPlatforms: [],
@@ -258,6 +269,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   showEditor: true,
   showGraph: true,
   nodeTypeCatalog: null,
+  experimental: false,
   passResults: [],
   preOptimizeSnapshot: null,
   undoStack: [],
@@ -302,6 +314,7 @@ export const useGraph = create<GraphState>((set, get) => ({
         simulationResult: null,
         optimizeResult: null,
         compileResult: null,
+        genexprResult: null,
         validationResult: null,
         inputSignals: {},
         error: null,
@@ -330,6 +343,7 @@ export const useGraph = create<GraphState>((set, get) => ({
         simulationResult: null,
         optimizeResult: null,
         compileResult: null,
+        genexprResult: null,
         validationResult: null,
         inputSignals: {},
         parseError: null,
@@ -494,6 +508,30 @@ export const useGraph = create<GraphState>((set, get) => ({
       set({ compileResult: result, error: null });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  runGenExpr: async () => {
+    const exported = await get().exportJson();
+    if (!exported) return;
+    try {
+      const result = await transpileGenExpr(exported);
+      set({ genexprResult: result, error: null });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  exportMaxpatFile: async () => {
+    const exported = await get().exportJson();
+    if (!exported) return null;
+    try {
+      const result = await exportMaxpat(exported);
+      set({ error: null });
+      return result;
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+      return null;
     }
   },
 
@@ -714,6 +752,15 @@ export const useGraph = create<GraphState>((set, get) => ({
       set({ nodeTypeCatalog: result.catalog });
     } catch (e) {
       console.error("Failed to fetch node types:", e);
+    }
+  },
+
+  fetchConfig: async () => {
+    try {
+      const cfg = await getConfig();
+      set({ experimental: cfg.experimental });
+    } catch (e) {
+      console.error("Failed to fetch config:", e);
     }
   },
 

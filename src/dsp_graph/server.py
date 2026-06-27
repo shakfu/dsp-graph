@@ -14,10 +14,13 @@ from dsp_graph import __version__
 from dsp_graph.api import build as build_api
 from dsp_graph.api import compile as compile_api
 from dsp_graph.api import generate as generate_api
+from dsp_graph.api import genexpr as genexpr_api
 from dsp_graph.api import graph as graph_api
 from dsp_graph.api import layout as layout_api
+from dsp_graph.api import maxpat as maxpat_api
 from dsp_graph.api import optimize as optimize_api
 from dsp_graph.api import simulate as simulate_api
+from dsp_graph.config import is_experimental
 from dsp_graph.security import (
     SESSION_TOKEN,
     BodySizeLimitMiddleware,
@@ -50,11 +53,19 @@ async def _session() -> dict[str, str]:
     return {"token": SESSION_TOKEN}
 
 
+@app.get("/api/config")
+async def _config() -> dict[str, bool]:
+    """Return runtime feature flags so the frontend can gate experimental UI."""
+    return {"experimental": is_experimental()}
+
+
 # Mount API routers
 app.include_router(graph_api.router, prefix="/api/graph", tags=["graph"])
+app.include_router(maxpat_api.router, prefix="/api/graph", tags=["maxpat"])
 app.include_router(simulate_api.router, prefix="/api", tags=["simulate"])
 app.include_router(optimize_api.router, prefix="/api", tags=["optimize"])
 app.include_router(compile_api.router, prefix="/api", tags=["compile"])
+app.include_router(genexpr_api.router, prefix="/api", tags=["genexpr"])
 app.include_router(generate_api.router, prefix="/api", tags=["generate"])
 app.include_router(build_api.router, prefix="/api", tags=["build"])
 app.include_router(layout_api.router, prefix="/api", tags=["layout"])

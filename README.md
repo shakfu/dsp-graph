@@ -47,13 +47,14 @@ Starts the server at `http://127.0.0.1:8765`. Open that URL in a browser, then l
 ### CLI Options
 
 ```
-dsp-graph serve [--host HOST] [--port PORT] [--reload] [--open]
+dsp-graph serve [--host HOST] [--port PORT] [--reload] [--open] [--experimental]
 ```
 
 - `--host`: Bind address (default: 127.0.0.1)
 - `--port`: Port (default: 8765)
 - `--reload`: Auto-reload on code changes
 - `--open`: Open browser on start
+- `--experimental`: Enable experimental features (the gen~/GenExpr transpiler tab and its Max `.maxpat` test-patch export). Off by default; when omitted the GenExpr tab is hidden and `POST /api/genexpr` and `POST /api/graph/export/maxpat` return 404.
 
 ### Security model
 
@@ -102,6 +103,8 @@ CI (`.github/workflows/ci.yml`) runs the backend lint/format/type-check/tests (P
 - `api/simulate.py` -- Per-sample simulation endpoint
 - `api/optimize.py` -- Multi-pass optimization endpoint
 - `api/compile.py` -- C++ code generation endpoint
+- `api/genexpr.py` -- gen~ codebox (GenExpr) transpile endpoint
+- `api/maxpat.py` -- Max `.maxpat` test-patch export endpoint (wraps `maxpat.py`)
 - `api/generate.py` -- Project generation (source files, zip download, platform listing)
 - `api/build.py` -- Binary build, batch build, and build cache management
 - `api/layout.py` -- Auto-layout endpoint
@@ -138,6 +141,9 @@ FastAPI also serves interactive docs at `/docs` (Swagger UI) and `/redoc`.
 | `/api/optimize` | POST | Optimize graph, all passes (before/after) |
 | `/api/optimize/pass` | POST | Apply a single named optimization pass |
 | `/api/compile` | POST | Graph -> C++ source |
+| `/api/config` | GET | Runtime feature flags (e.g. `experimental`) |
+| `/api/genexpr` | POST | Graph -> gen~ codebox (GenExpr) source (experimental; 404 unless `--experimental`) |
+| `/api/graph/export/maxpat` | POST | Graph -> Max `.maxpat` test patch wrapping the gen~ codebox (experimental; 404 unless `--experimental`) |
 | `/api/layout` | POST | Auto-layout ReactFlow nodes |
 | `/api/generate` | POST | Generate project source files |
 | `/api/generate/zip` | POST | Generate project as zip download |

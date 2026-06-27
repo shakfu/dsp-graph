@@ -230,3 +230,44 @@ class TestGraphToGdsp:
         assert p.min == 0.0
         assert p.max == 2.0
         assert p.default == 1.0
+
+
+class TestOpColors:
+    """OP_COLORS must stay in step with the gen-dsp Node union.
+
+    The map is derived from the Node discriminated-union schema, so these tests
+    guard against drift: every op a graph can contain must have a color, and the
+    derivation must not silently leave any op at the default color.
+    """
+
+    def test_every_node_op_has_a_color(self) -> None:
+        """Every op string in the Node union is colored (no white fallback)."""
+        from typing import get_args
+
+        from gen_dsp.graph.models import Node
+
+        ops: set[str] = set()
+        for member in get_args(get_args(Node)[0]):  # unwrap Annotated[Union[...], ...]
+            field = member.model_fields.get("op")
+            if field is None:
+                continue
+            literals = get_args(field.annotation)
+            ops.update(literals) if literals else ops.add(field.default)
+
+        uncolored = sorted(op for op in ops if op not in OP_COLORS)
+        assert uncolored == [], f"ops missing from OP_COLORS: {uncolored}"
+
+    def test_no_op_uses_default_color(self) -> None:
+        from dsp_graph.convert import DEFAULT_COLOR
+
+        white = sorted(op for op, c in OP_COLORS.items() if c == DEFAULT_COLOR)
+        assert white == [], f"ops colored with the default fallback: {white}"
+
+    def test_renamed_ops_are_colored(self) -> None:
+        """Ops renamed in gen-dsp (0.1 -> 0.3) resolve to their class color."""
+        # DelayLine.op: delay_line -> delay; SmoothParam.op: smooth_param -> smooth.
+        assert OP_COLORS["delay"] == OP_COLORS["delay_read"]
+        assert OP_COLORS["smooth"] == OP_COLORS["slide"]
+        # NamedConstant.op is now an enum of constant names, colored like Constant.
+        assert OP_COLORS["pi"] == OP_COLORS["constant"]
+        assert OP_COLORS["e"] == OP_COLORS["constant"]
