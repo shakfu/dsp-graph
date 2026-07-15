@@ -158,6 +158,19 @@ class TestLoadGdsp:
         assert isinstance(detail["line"], int)
         assert isinstance(detail["col"], int)
 
+    def test_load_gdsp_semantic_error_is_structured(self, client: TestClient) -> None:
+        """A semantic (compile) error -- e.g. an undefined function -- is parseable
+        but invalid; it must return structured line/col like a syntax error does,
+        not a bare string, so the editor can mark the location."""
+        source = "graph bad {\n  out o = nope(1.0)\n}"
+        resp = client.post("/api/graph/load/gdsp", json={"source": source})
+        assert resp.status_code == 422
+        detail = resp.json()["detail"]
+        assert isinstance(detail, dict), "compile error should be structured, not a string"
+        assert "nope" in detail["message"]
+        assert detail["line"] == 2
+        assert isinstance(detail["col"], int) and detail["col"] > 0
+
 
 class TestLoadGdspMultiGraph:
     SOURCE = (

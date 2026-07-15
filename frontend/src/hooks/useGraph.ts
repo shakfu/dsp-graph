@@ -99,6 +99,7 @@ interface GraphState {
   // Node catalog
   nodeTypeCatalog: NodeTypeCatalog | null;
   experimental: boolean;
+  buildEnabled: boolean;
 
   setExportSvg: (fn: (() => Promise<void>) | null) => void;
   setNodes: (nodes: Node<RFNodeData>[]) => void;
@@ -119,6 +120,7 @@ interface GraphState {
   bufferData: Record<string, number[]>;
   resetSimulation: () => Promise<void>;
   runOptimize: () => Promise<void>;
+  runSinglePass: (passName: OptimizePassName) => Promise<void>;
   runCompile: () => Promise<void>;
   runGenExpr: () => Promise<void>;
   exportMaxpatFile: () => Promise<MaxpatResponse | null>;
@@ -270,6 +272,9 @@ export const useGraph = create<GraphState>((set, get) => ({
   showGraph: true,
   nodeTypeCatalog: null,
   experimental: false,
+  // Build is enabled by default (the server can opt out with --disable-build);
+  // default to true so the panel does not flicker before config loads.
+  buildEnabled: true,
   passResults: [],
   preOptimizeSnapshot: null,
   undoStack: [],
@@ -746,6 +751,48 @@ export const useGraph = create<GraphState>((set, get) => ({
     }
   },
 
+  runSinglePass: async (passName: OptimizePassName) => {
+    const exported = await get().exportJson();
+    if (!exported) return;
+
+    // Snapshot only at the start of a step-through sequence, so Reset returns to
+    // the original graph rather than the state after a previously applied pass.
+    if (!get().preOptimizeSnapshot) {
+      set({
+        preOptimizeSnapshot: {
+          nodes: [...get().nodes],
+          edges: [...get().edges],
+          gdspSource: get().gdspSource,
+        },
+        passResults: [],
+      });
+    }
+
+    try {
+      // Apply the single pass to the *current* (possibly already-optimized)
+      // graph, so passes compose as the user steps through them.
+      const result = await optimizePass(exported, passName);
+      set({
+        nodes: toFlowNodes(result.optimized.nodes),
+        edges: toFlowEdges(result.optimized.edges),
+        passResults: [
+          ...get().passResults,
+          {
+            passName,
+            nodesBefore: result.stats.nodes_before,
+            nodesAfter: result.stats.nodes_after,
+          },
+        ],
+        error: null,
+      });
+      // Keep the editor source in sync with the updated graph.
+      const gdspSource = await get().exportGdsp();
+      if (gdspSource) set({ gdspSource });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
   fetchNodeTypes: async () => {
     try {
       const result = await getNodeTypes();
@@ -758,7 +805,7 @@ export const useGraph = create<GraphState>((set, get) => ({
   fetchConfig: async () => {
     try {
       const cfg = await getConfig();
-      set({ experimental: cfg.experimental });
+      set({ experimental: cfg.experimental, buildEnabled: cfg.build_enabled });
     } catch (e) {
       console.error("Failed to fetch config:", e);
     }

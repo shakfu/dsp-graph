@@ -74,14 +74,16 @@ Editor-primary workflow needs persistence -- losing source on refresh is painful
 ### Individual optimization passes
 `constant_fold()`, `eliminate_cse()`, `eliminate_dead_nodes()`, `promote_control_rate()`
 are available individually but only the all-in-one `optimize_graph()` is exposed.
-- [ ] Backend endpoints for individual passes
-- [ ] Step-through UI: apply one pass at a time, see before/after diff
+- [x] Backend endpoints for individual passes (`/api/optimize/pass`, tested)
+- [x] Step-through UI: apply one pass at a time, see before/after node-count diff
 - [ ] Side-by-side diff view for C++ output before/after optimization
 
 ### Structured DSL compile errors
-`GDSPCompileError` (semantic errors like "undefined function") is caught by the
-generic `except Exception`, losing `.line` and `.col`. Should get same structured
-treatment as `GDSPSyntaxError`. Directly improves the editor experience.
+`GDSPCompileError` (semantic errors like "undefined function") was caught by the
+generic `except Exception`, losing `.line` and `.col`. Now gets the same
+structured treatment as `GDSPSyntaxError`. Directly improves the editor experience.
+- [x] Return structured `{message, line, col}` for `GDSPCompileError` from `/api/graph/load/gdsp`
+  (the frontend `ParseError` marker path consumes it unchanged)
 
 ### Multi-graph GDSP parsing and composition
 The gdsp load endpoint now uses `parse_multi(source)` (returns `dict[str, Graph]`)
@@ -139,18 +141,19 @@ Remaining items from the architecture/code review (the security, input-bounds,
 edge-editing, Safari-loop, CI, sample-rate, and dead-code items are already done).
 
 ### Robustness & ops
-- [ ] Offload blocking work off the async event loop (`run_in_threadpool` or sync
+- [x] Offload blocking work off the async event loop (`run_in_threadpool` or sync
   handlers): native build, numpy simulation, and cache disk IO currently run
   inline in `async def` handlers, so a single build freezes the whole server.
-- [ ] Document the single-worker assumption -- in-memory sessions, batch cache,
+- [x] Document the single-worker assumption -- in-memory sessions, batch cache,
   and the build-cache singleton are per-process; or move them to a shared store
   to support multiple workers.
-- [ ] Gate `/api/build*` behind an explicit `--enable-build` flag and document the
+- [x] Gate `/api/build*` behind an explicit `--enable-build` flag and document the
   localhost-only security model (defense-in-depth alongside the session token).
 
 ### Tooling & maintainability
-- [ ] Frontend ESLint config + a `lint` target in the Makefile/CI (the inline
-  `eslint-disable` comments currently have nothing to attach to).
+- [x] Frontend ESLint config + a `lint` target in the Makefile/CI (ESLint 9 flat
+  config; `make frontend-lint` / `frontend-qa`; all rules incl. jsx-a11y enforced
+  as errors, lint clean -- keyboard/focus support added via `utils/a11y.ts` helpers).
 - [ ] Decompose the ~800-line `useGraph` zustand store into composed slices
   (graph / sim / build / editor) and split the large `GraphCanvas.tsx`
   (extract `ContextMenu`, `NodePicker`, a keyboard hook).
@@ -158,16 +161,16 @@ edge-editing, Safari-loop, CI, sample-rate, and dead-code items are already done
   the hand-rolled FFT, and the ELK layout mapping.
 
 ### Docs
-- [ ] README: add screenshots/GIF; complete the API table (`/api/graph/export/gdsp`
-  and the `/api/simulate/*` stateful routes are missing).
+- [ ] README: add screenshots/GIF (the API table is now complete).
 - [ ] Add `CONTRIBUTING.md`.
 - [ ] CHANGELOG: add release dates and compare links per keepachangelog.
-- [ ] Refresh `CLAUDE.md` module-layout and API tables (add `cache.py`,
+- [x] Refresh `CLAUDE.md` module-layout and API tables (add `cache.py`,
   `api/generate.py`, `api/build.py`, `security.py`).
 
 ### Features
-- [ ] Spectrum display: apply a window function and fix the Nyquist axis label for
-  zero-padded / non-power-of-2 FFT sizes (currently rectangular window + smearing).
+- [x] Spectrum display: apply a window function and fix the Nyquist axis label for
+  zero-padded / non-power-of-2 FFT sizes (Hann window + coherent-gain normalization;
+  now includes the Nyquist bin so the right edge maps exactly to sampleRate/2).
 
 ---
 

@@ -6,6 +6,7 @@ import { LayoutPanel } from "./LayoutPanel";
 import { BuildPanel } from "./BuildPanel";
 import { NodeCatalog } from "./NodeCatalog";
 import { useGraph } from "../hooks/useGraph";
+import { buttonProps } from "../utils/a11y";
 
 type Tab = "inspect" | "tools" | "catalog";
 
@@ -30,6 +31,7 @@ export function Sidebar() {
   const validationErrors = useGraph((s) => s.validationErrors);
   const selectNode = useGraph((s) => s.selectNode);
   const storeNodes = useGraph((s) => s.nodes);
+  const buildEnabled = useGraph((s) => s.buildEnabled);
   const nodes = storeNodes;
   const [activeTab, setActiveTab] = useState<Tab>("tools");
 
@@ -112,12 +114,12 @@ export function Sidebar() {
                 {validationErrors.map((err, i) => (
                   <div
                     key={i}
-                    onClick={() => {
-                      if (err.node_id) {
-                        const node = nodes.find((n) => n.id === err.node_id);
-                        if (node) selectNode(node);
-                      }
-                    }}
+                    {...(err.node_id
+                      ? buttonProps(() => {
+                          const node = nodes.find((n) => n.id === err.node_id);
+                          if (node) selectNode(node);
+                        })
+                      : {})}
                     style={{
                       padding: "4px 6px",
                       marginBottom: 4,
@@ -142,7 +144,7 @@ export function Sidebar() {
 
         {activeTab === "tools" && (
           <>
-            <BuildPanel />
+            {buildEnabled && <BuildPanel />}
             <SimulationPanel />
             <OptimizePanel />
             <LayoutPanel />

@@ -1,11 +1,16 @@
+import type { OptimizePassName } from "../api/types";
 import { useGraph } from "../hooks/useGraph";
 
-const PASS_LABELS: Record<string, string> = {
-  constant_fold: "Constant fold",
-  eliminate_cse: "Common subexpression elimination",
-  eliminate_dead_nodes: "Dead node elimination",
-  promote_control_rate: "Control-rate promotion",
-};
+const PASSES: { name: OptimizePassName; label: string }[] = [
+  { name: "constant_fold", label: "Constant fold" },
+  { name: "eliminate_cse", label: "Common subexpression elimination" },
+  { name: "eliminate_dead_nodes", label: "Dead node elimination" },
+  { name: "promote_control_rate", label: "Control-rate promotion" },
+];
+
+const PASS_LABELS: Record<string, string> = Object.fromEntries(
+  PASSES.map((p) => [p.name, p.label])
+);
 
 const buttonStyle: React.CSSProperties = {
   padding: "4px 10px",
@@ -16,8 +21,16 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const passButtonStyle: React.CSSProperties = {
+  ...buttonStyle,
+  padding: "3px 8px",
+  fontSize: 11,
+  textAlign: "left",
+};
+
 export function OptimizePanel() {
   const runOptimize = useGraph((s) => s.runOptimize);
+  const runSinglePass = useGraph((s) => s.runSinglePass);
   const resetOptimize = useGraph((s) => s.resetOptimize);
   const passResults = useGraph((s) => s.passResults);
   const preOptimizeSnapshot = useGraph((s) => s.preOptimizeSnapshot);
@@ -38,6 +51,23 @@ export function OptimizePanel() {
           </button>
         )}
       </div>
+
+      <div style={{ marginTop: 8, fontSize: 11, color: "#888" }}>
+        Step through one pass at a time:
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 4 }}>
+        {PASSES.map((p) => (
+          <button
+            key={p.name}
+            style={passButtonStyle}
+            title={`Apply ${p.label} to the current graph`}
+            onClick={() => void runSinglePass(p.name)}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       {passResults.length > 0 && (
         <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.6 }}>
           {passResults.map((r, i) => {
@@ -45,7 +75,8 @@ export function OptimizePanel() {
             const diff = r.nodesBefore - r.nodesAfter;
             return (
               <div key={i} style={{ color: diff > 0 ? "#2a7" : "#888" }}>
-                {label}: {diff > 0 ? `${diff} node${diff !== 1 ? "s" : ""} removed` : "no change"}
+                {i + 1}. {label}: {r.nodesBefore} &rarr; {r.nodesAfter} nodes{" "}
+                {diff > 0 ? `(${diff} removed)` : "(no change)"}
               </div>
             );
           })}

@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { useGraph } from "../hooks/useGraph";
+import { buttonProps } from "../utils/a11y";
 
 const buttonStyle: React.CSSProperties = {
   padding: "4px 12px",
@@ -205,8 +206,8 @@ export function GraphToolbar() {
             whiteSpace: "nowrap",
             cursor: "pointer",
           }}
-          onClick={clearError}
-          title={error}
+          {...buttonProps(clearError)}
+          title={`${error} (click to dismiss)`}
         >
           {error}
         </span>

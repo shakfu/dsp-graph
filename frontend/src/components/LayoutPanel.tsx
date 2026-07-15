@@ -54,8 +54,9 @@ export function LayoutPanel() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <label style={{ fontSize: 12 }}>Algorithm:</label>
+          <label htmlFor="layout-algorithm" style={{ fontSize: 12 }}>Algorithm:</label>
           <select
+            id="layout-algorithm"
             style={selectStyle}
             value={layoutOptions.algorithm}
             onChange={(e) =>
@@ -72,8 +73,9 @@ export function LayoutPanel() {
 
         {showDirection && (
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <label style={{ fontSize: 12 }}>Direction:</label>
+            <label htmlFor="layout-direction" style={{ fontSize: 12 }}>Direction:</label>
             <select
+              id="layout-direction"
               style={selectStyle}
               value={layoutOptions.direction}
               onChange={(e) =>
@@ -90,8 +92,9 @@ export function LayoutPanel() {
         )}
 
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <label style={{ fontSize: 12 }}>Node spacing:</label>
+          <label htmlFor="layout-node-spacing" style={{ fontSize: 12 }}>Node spacing:</label>
           <input
+            id="layout-node-spacing"
             type="number"
             style={inputStyle}
             value={layoutOptions.nodeSpacing}
@@ -102,8 +105,9 @@ export function LayoutPanel() {
         </div>
 
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <label style={{ fontSize: 12 }}>Layer spacing:</label>
+          <label htmlFor="layout-layer-spacing" style={{ fontSize: 12 }}>Layer spacing:</label>
           <input
+            id="layout-layer-spacing"
             type="number"
             style={inputStyle}
             value={layoutOptions.layerSpacing}

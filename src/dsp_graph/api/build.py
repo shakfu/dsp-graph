@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import shutil
@@ -12,7 +13,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from gen_dsp.core.builder import Builder  # type: ignore[import-untyped]
 from gen_dsp.core.project import ProjectConfig, ProjectGenerator  # type: ignore[import-untyped]
@@ -27,14 +29,42 @@ from dsp_graph.api.generate import (
     validate_graph_name,
 )
 from dsp_graph.cache import BuildCache, cache_key, get_cache
+from dsp_graph.config import is_build_enabled
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
 
-# Batch artifact cache: batch_id -> {created, artifacts: {platform: (cache_key, filename)}}
+def _require_build_enabled() -> None:
+    """Router dependency: 404 when the server was started with --disable-build.
+
+    Native compilation is the highest-privilege api (it invokes a host toolchain
+    and writes to disk). It is on by default but can be disabled for a hardened
+    deployment. A 404 (rather than 403) keeps the endpoints indistinguishable
+    from "not present" when disabled.
+    """
+    if not is_build_enabled():
+        raise HTTPException(
+            status_code=404,
+            detail="Native build endpoints are disabled (the server was started "
+            "with --disable-build).",
+        )
+
+
+# Every route on this router is gated: disabled when --disable-build is set.
+router = APIRouter(dependencies=[Depends(_require_build_enabled)])
+
+# Batch artifact cache: batch_id -> {created, artifacts: {platform: (cache_key, filename)}}.
+# In-process and per-worker (single-worker assumption; see README "Security model").
+# Accessed only on the event loop, so it needs no lock.
 _batch_cache: dict[str, dict[str, Any]] = {}
 _BATCH_TTL = 600  # 10 minutes
+
+# Native builds are heavy (a full toolchain invocation each). Cap how many run
+# concurrently so a burst cannot thrash CPU/IO or exhaust the threadpool. This is
+# back-pressure: the (N+1)th build waits for a slot rather than failing. Acquired
+# on the event loop before entering the worker thread, so it needs no lock.
+_MAX_CONCURRENT_BUILDS = 2
+_build_slot = asyncio.Semaphore(_MAX_CONCURRENT_BUILDS)
 
 
 def _cleanup_expired_batches() -> None:
@@ -99,6 +129,18 @@ def _compile_build(g: Graph, platform: str) -> _BuildResult:
     except Exception:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise
+
+
+def _zip_batch_artifacts(bc: BuildCache, artifacts: dict[str, tuple[str, str]]) -> bytes:
+    """Read cached artifacts from disk and assemble a zip. Blocking; run in a thread."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for plat, (key, filename) in artifacts.items():
+            hit = bc.get(key)
+            if hit is not None:
+                data, _ = hit
+                zf.writestr(f"{plat}/{filename}", data)
+    return buf.getvalue()
 
 
 def _read_output_bytes(output_path: Path) -> bytes:
@@ -189,7 +231,8 @@ async def compile_build(req: GenerateRequest) -> CompileBuildResponse:
     g = _validate_generate_request(req)
 
     try:
-        cr = _compile_build_cached(g, req.platform)
+        async with _build_slot:
+            cr = await run_in_threadpool(_compile_build_cached, g, req.platform)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -202,7 +245,8 @@ async def download_binary(req: GenerateRequest) -> StreamingResponse:
     g = _validate_generate_request(req)
 
     try:
-        cr = _compile_build_cached(g, req.platform)
+        async with _build_slot:
+            cr = await run_in_threadpool(_compile_build_cached, g, req.platform)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -250,7 +294,10 @@ async def batch_build(req: BatchBuildRequest) -> BatchBuildResponse:
             )
             continue
         try:
-            cr = _compile_build_cached(g, plat)
+            # Acquire per platform (not once for the whole batch) so a large
+            # batch does not monopolize every slot and starve single builds.
+            async with _build_slot:
+                cr = await run_in_threadpool(_compile_build_cached, g, plat)
             if cr.response.success and cr.data is not None and cr.filename is not None:
                 key = cache_key(g, plat)
                 artifacts[plat] = (key, cr.filename)
@@ -284,20 +331,13 @@ async def download_batch_zip(batch_id: str) -> StreamingResponse:
         raise HTTPException(status_code=404, detail="No successful builds in batch")
 
     bc = get_cache()
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for plat, (key, filename) in artifacts.items():
-            hit = bc.get(key)
-            if hit is not None:
-                data, _ = hit
-                zf.writestr(f"{plat}/{filename}", data)
-    buf.seek(0)
+    data = await run_in_threadpool(_zip_batch_artifacts, bc, artifacts)
 
     # Remove from cache after serving
     del _batch_cache[batch_id]
 
     return StreamingResponse(
-        buf,
+        io.BytesIO(data),
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="batch_build.zip"'},
     )
@@ -319,7 +359,7 @@ class CacheInfoResponse(BaseModel):
 @router.delete("/build/cache", response_model=CacheClearResponse)
 async def clear_build_cache() -> CacheClearResponse:
     """Clear all cached build artifacts."""
-    n = get_cache().clear()
+    n = await run_in_threadpool(get_cache().clear)
     return CacheClearResponse(removed=n)
 
 
@@ -327,7 +367,7 @@ async def clear_build_cache() -> CacheClearResponse:
 async def build_cache_info() -> CacheInfoResponse:
     """Return cache statistics."""
     bc = get_cache()
-    entries, total_bytes = bc.size()
+    entries, total_bytes = await run_in_threadpool(bc.size)
     return CacheInfoResponse(
         entries=entries,
         total_bytes=total_bytes,

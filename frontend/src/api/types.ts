@@ -70,6 +70,7 @@ export interface GenExprResponse {
 
 export interface AppConfig {
   experimental: boolean;
+  build_enabled: boolean;
 }
 
 export interface MaxpatResponse {

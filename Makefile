@@ -1,5 +1,6 @@
 .PHONY: install install-dev test lint typecheck format qa \
 	frontend-install frontend-dev frontend-build \
+	frontend-lint frontend-typecheck frontend-test frontend-qa \
 	serve dev dist clean check publish publish-test
 
 # Python
@@ -32,6 +33,19 @@ frontend-dev:
 
 frontend-build:
 	cd frontend && npm run build
+
+frontend-lint:
+	cd frontend && npm run lint
+
+frontend-typecheck:
+	cd frontend && npx tsc --noEmit
+
+frontend-test:
+	cd frontend && npm test
+
+# Frontend gate (lint + typecheck + tests); kept separate from `qa` so the
+# Python-only flow does not require a Node toolchain.
+frontend-qa: frontend-lint frontend-typecheck frontend-test
 
 # Server
 serve:

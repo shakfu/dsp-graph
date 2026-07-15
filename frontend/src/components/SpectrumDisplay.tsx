@@ -1,4 +1,5 @@
 import { useRef, useEffect } from "react";
+import { computeSpectrum } from "../utils/fft";
 
 interface SpectrumDisplayProps {
   data: number[];
@@ -7,66 +8,6 @@ interface SpectrumDisplayProps {
   height?: number;
   color?: string;
   label?: string;
-}
-
-/** Radix-2 FFT (in-place, iterative). Expects arrays of length 2^n. */
-function fft(re: Float64Array, im: Float64Array): void {
-  const n = re.length;
-  // Bit-reversal permutation
-  for (let i = 1, j = 0; i < n; i++) {
-    let bit = n >> 1;
-    while (j & bit) {
-      j ^= bit;
-      bit >>= 1;
-    }
-    j ^= bit;
-    if (i < j) {
-      [re[i]!, re[j]!] = [re[j]!, re[i]!];
-      [im[i]!, im[j]!] = [im[j]!, im[i]!];
-    }
-  }
-  // FFT butterfly
-  for (let len = 2; len <= n; len <<= 1) {
-    const half = len >> 1;
-    const angle = (-2 * Math.PI) / len;
-    const wRe = Math.cos(angle);
-    const wIm = Math.sin(angle);
-    for (let i = 0; i < n; i += len) {
-      let curRe = 1;
-      let curIm = 0;
-      for (let j = 0; j < half; j++) {
-        const tRe = curRe * re[i + j + half]! - curIm * im[i + j + half]!;
-        const tIm = curRe * im[i + j + half]! + curIm * re[i + j + half]!;
-        re[i + j + half] = re[i + j]! - tRe;
-        im[i + j + half] = im[i + j]! - tIm;
-        re[i + j] = re[i + j]! + tRe;
-        im[i + j] = im[i + j]! + tIm;
-        const nextRe = curRe * wRe - curIm * wIm;
-        curIm = curRe * wIm + curIm * wRe;
-        curRe = nextRe;
-      }
-    }
-  }
-}
-
-function computeSpectrum(data: number[]): Float64Array {
-  // Pad/truncate to next power of 2
-  let n = 1;
-  while (n < data.length) n <<= 1;
-  const re = new Float64Array(n);
-  const im = new Float64Array(n);
-  for (let i = 0; i < data.length && i < n; i++) {
-    re[i] = data[i]!;
-  }
-  fft(re, im);
-  // Magnitude in dB (only first half -- positive frequencies)
-  const half = n >> 1;
-  const mag = new Float64Array(half);
-  for (let i = 0; i < half; i++) {
-    const m = Math.sqrt(re[i]! * re[i]! + im[i]! * im[i]!) / n;
-    mag[i] = 20 * Math.log10(Math.max(m, 1e-10));
-  }
-  return mag;
 }
 
 export function SpectrumDisplay({

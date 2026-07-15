@@ -19,6 +19,7 @@ import { InputNode } from "../nodes/InputNode";
 import { OutputNode } from "../nodes/OutputNode";
 import { ParamNode } from "../nodes/ParamNode";
 import { DirectionContext, CatalogContext } from "../hooks/useHandlePositions";
+import { buttonProps, hoverHighlight } from "../utils/a11y";
 
 const nodeTypes = {
   dsp_node: DspNode,
@@ -126,7 +127,8 @@ function NodePicker({
         {ops.map((op) => (
           <div
             key={op}
-            onClick={() => onSelect(op)}
+            {...buttonProps(() => onSelect(op))}
+            {...hoverHighlight()}
             style={{
               display: "flex",
               alignItems: "center",
@@ -135,12 +137,6 @@ function NodePicker({
               fontSize: 11,
               cursor: "pointer",
               borderRadius: 2,
-            }}
-            onMouseOver={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "#f0f0f0";
-            }}
-            onMouseOut={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "transparent";
             }}
           >
             <span
@@ -531,9 +527,8 @@ export function GraphCanvas() {
                 <div>
                   <div
                     style={menuItemStyle}
-                    onClick={() => setShowNodePicker(true)}
-                    onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = "#f0f0f0"; }}
-                    onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                    {...buttonProps(() => setShowNodePicker(true))}
+                    {...hoverHighlight()}
                   >
                     Add Node...
                   </div>
@@ -552,23 +547,21 @@ export function GraphCanvas() {
                 <div>
                   <div
                     style={menuItemStyle}
-                    onClick={() => {
+                    {...buttonProps(() => {
                       duplicateNodes([contextMenu.nodeId!]);
                       closeContextMenu();
-                    }}
-                    onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = "#f0f0f0"; }}
-                    onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                    })}
+                    {...hoverHighlight()}
                   >
                     Duplicate
                   </div>
                   <div
                     style={{ ...menuItemStyle, color: "#dc3545" }}
-                    onClick={() => {
+                    {...buttonProps(() => {
                       deleteNodes([contextMenu.nodeId!]);
                       closeContextMenu();
-                    }}
-                    onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = "#f0f0f0"; }}
-                    onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                    })}
+                    {...hoverHighlight()}
                   >
                     Delete
                   </div>
@@ -579,12 +572,11 @@ export function GraphCanvas() {
                 <div>
                   <div
                     style={{ ...menuItemStyle, color: "#dc3545" }}
-                    onClick={() => {
+                    {...buttonProps(() => {
                       deleteEdges([contextMenu.edgeId!]);
                       closeContextMenu();
-                    }}
-                    onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = "#f0f0f0"; }}
-                    onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                    })}
+                    {...hoverHighlight()}
                   >
                     Delete Edge
                   </div>

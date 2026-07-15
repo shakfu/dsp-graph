@@ -47,7 +47,7 @@ Starts the server at `http://127.0.0.1:8765`. Open that URL in a browser, then l
 ### CLI Options
 
 ```
-dsp-graph serve [--host HOST] [--port PORT] [--reload] [--open] [--experimental]
+dsp-graph serve [--host HOST] [--port PORT] [--reload] [--open] [--experimental] [--disable-build]
 ```
 
 - `--host`: Bind address (default: 127.0.0.1)
@@ -55,10 +55,13 @@ dsp-graph serve [--host HOST] [--port PORT] [--reload] [--open] [--experimental]
 - `--reload`: Auto-reload on code changes
 - `--open`: Open browser on start
 - `--experimental`: Enable experimental features (the gen~/GenExpr transpiler tab and its Max `.maxpat` test-patch export). Off by default; when omitted the GenExpr tab is hidden and `POST /api/genexpr` and `POST /api/graph/export/maxpat` return 404.
+- `--disable-build`: Disable the native build endpoints (`/api/build*`), which compile graphs to plugin binaries on the host. Enabled by default; when set the Plugin Target build panel is hidden and every `/api/build*` route returns 404. Source generation (`/api/generate*`) is unaffected either way. Use this for a hardened, inspect-only deployment.
 
 ### Security model
 
-dsp-graph is designed for **single-user, localhost** use and binds to `127.0.0.1` by default. The build endpoints generate and compile native code on the host, so the server should not be exposed to untrusted networks. As a safeguard against cross-origin requests from other browser tabs, all state-changing (`POST`/`PUT`/`PATCH`/`DELETE`) `/api` requests require a per-process session token (`GET /api/session`), which the bundled UI fetches automatically. The server also runs a single worker; its session and cache state are in-process.
+dsp-graph is designed for **single-user, localhost** use and binds to `127.0.0.1` by default. The build endpoints generate and compile native code on the host, so the server should not be exposed to untrusted networks. For a hardened, inspect-only deployment they can be turned off entirely with `--disable-build`. As a safeguard against cross-origin requests from other browser tabs, all state-changing (`POST`/`PUT`/`PATCH`/`DELETE`) `/api` requests require a per-process session token (`GET /api/session`), which the bundled UI fetches automatically.
+
+**Single-worker deployment.** The server runs a single worker, and this is assumed throughout: simulation sessions, the batch-build cache, and the build-cache singleton are all in-process, per-worker state. Blocking work (native builds, simulation, cache disk IO) is offloaded to a worker-thread pool so it does not stall the async event loop, but the shared dictionaries are only ever touched on the event loop, so they need no locking. Running multiple workers (`uvicorn --workers N`) would break session and batch-download continuity -- a request can land on a worker that does not hold its state -- and requires moving that state to a shared store first.
 
 ## Development
 
@@ -79,10 +82,13 @@ make frontend-dev
 make frontend-build
 
 # Run frontend tests (Vitest)
-cd frontend && npm test
+make frontend-test
 
-# Run full QA (test + lint + typecheck + format)
+# Run full backend QA (test + lint + typecheck + format)
 make qa
+
+# Run full frontend QA (ESLint + tsc + Vitest)
+make frontend-qa
 
 # Start server with auto-reload
 make dev
@@ -141,7 +147,7 @@ FastAPI also serves interactive docs at `/docs` (Swagger UI) and `/redoc`.
 | `/api/optimize` | POST | Optimize graph, all passes (before/after) |
 | `/api/optimize/pass` | POST | Apply a single named optimization pass |
 | `/api/compile` | POST | Graph -> C++ source |
-| `/api/config` | GET | Runtime feature flags (e.g. `experimental`) |
+| `/api/config` | GET | Runtime feature flags (`experimental`, `build_enabled`) |
 | `/api/genexpr` | POST | Graph -> gen~ codebox (GenExpr) source (experimental; 404 unless `--experimental`) |
 | `/api/graph/export/maxpat` | POST | Graph -> Max `.maxpat` test patch wrapping the gen~ codebox (experimental; 404 unless `--experimental`) |
 | `/api/layout` | POST | Auto-layout ReactFlow nodes |
@@ -154,6 +160,8 @@ FastAPI also serves interactive docs at `/docs` (Swagger UI) and `/redoc`.
 | `/api/build/batch/{id}/zip` | GET | Download batch build as zip |
 | `/api/build/cache` | DELETE | Clear build cache |
 | `/api/build/cache/info` | GET | Build cache statistics |
+
+All `/api/build*` routes are enabled by default but return 404 when the server is started with `--disable-build`.
 
 ## License
 

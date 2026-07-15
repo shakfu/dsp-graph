@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from gen_dsp.graph.models import Graph
 from gen_dsp.graph.optimize import (
     constant_fold,
@@ -57,7 +58,7 @@ async def optimize(req: OptimizeRequest) -> OptimizeResponse:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     try:
-        result = optimize_graph(g)
+        result = await run_in_threadpool(optimize_graph, g)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -83,7 +84,7 @@ async def optimize_pass(req: PassRequest) -> PassResponse:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     try:
-        optimized = PASSES[req.pass_name](g)
+        optimized = await run_in_threadpool(PASSES[req.pass_name], g)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

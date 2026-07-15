@@ -68,12 +68,15 @@ async def load_gdsp(req: LoadGdspRequest) -> ReactFlowGraph:
     ``graph_name`` if given and present, else the last graph defined. The full
     list of graph names is included in ``graph_names`` for a UI selector.
     """
-    from gen_dsp.graph.dsl import GDSPSyntaxError, parse_multi
+    from gen_dsp.graph.dsl import GDSPCompileError, GDSPSyntaxError, parse_multi
 
     try:
         graphs = parse_multi(req.source)
-    except GDSPSyntaxError as exc:
-        # Extract raw message by stripping the "<file>:<line>:<col>: " prefix
+    except (GDSPSyntaxError, GDSPCompileError) as exc:
+        # Both carry .line/.col and format str() as "<file>:<line>:<col>: <msg>".
+        # GDSPSyntaxError is malformed source; GDSPCompileError is semantic (e.g.
+        # an undefined function). Return structured fields (not a bare string) so
+        # the editor can place an inline marker at the offending location.
         full = str(exc)
         prefix = f"{exc.filename}:{exc.line}:{exc.col}: "
         msg = full[len(prefix) :] if full.startswith(prefix) else full

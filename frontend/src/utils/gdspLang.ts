@@ -101,7 +101,7 @@ const gdspParser: StreamParser<null> = {
     if (stream.match("@")) return "meta";
 
     // Operators
-    if (stream.match(/^[+\-*\/%=<>!&|^~?:]/)) return "operator";
+    if (stream.match(/^[+\-*/%=<>!&|^~?:]/)) return "operator";
 
     // Punctuation
     if (stream.match(/^[{}(),;]/)) return "punctuation";

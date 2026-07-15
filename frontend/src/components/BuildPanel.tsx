@@ -78,8 +78,9 @@ export function BuildPanel() {
     <div>
       <h4 style={{ margin: "0 0 8px", fontSize: 13 }}>Plugin Target</h4>
       <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
-        <label style={{ fontSize: 12 }}>Platform:</label>
+        <label htmlFor="build-platform" style={{ fontSize: 12 }}>Platform:</label>
         <select
+          id="build-platform"
           style={selectStyle}
           value={platform}
           onChange={(e) => setPlatform(e.target.value)}

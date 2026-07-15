@@ -73,11 +73,11 @@ class TestExperimentalGating:
     ) -> None:
         resp = client.get("/api/config")
         assert resp.status_code == 200
-        assert resp.json() == {"experimental": False}
+        assert resp.json()["experimental"] is False
 
     def test_config_reports_experimental_on(
         self, client: TestClient, experimental_on: None
     ) -> None:
         resp = client.get("/api/config")
         assert resp.status_code == 200
-        assert resp.json() == {"experimental": True}
+        assert resp.json()["experimental"] is True

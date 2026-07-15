@@ -10,6 +10,8 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from dsp_graph.config import DISABLE_BUILD_ENV
+
 _has_cmake = shutil.which("cmake") is not None
 
 
@@ -353,3 +355,56 @@ class TestGraphNameValidation:
         assert "my_cool_graph" in cd
         assert " " not in cd.split("filename=")[1]
         assert "!" not in cd
+
+
+class TestBuildGating:
+    """The native build endpoints are enabled by default but --disable-build hides them."""
+
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [
+            ("post", "/api/build"),
+            ("post", "/api/build/binary"),
+            ("post", "/api/build/batch"),
+            ("get", "/api/build/batch/some_id/zip"),
+            ("get", "/api/build/cache/info"),
+            ("delete", "/api/build/cache"),
+        ],
+    )
+    def test_build_routes_404_when_disabled(
+        self,
+        client: TestClient,
+        stereo_gain_json: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+        method: str,
+        path: str,
+    ) -> None:
+        monkeypatch.setenv(DISABLE_BUILD_ENV, "1")
+        if method == "post":
+            body = {"graph": stereo_gain_json, "platform": "clap", "platforms": ["clap"]}
+            resp = client.post(path, json=body)
+        else:
+            # GET/DELETE convenience methods take no body.
+            resp = getattr(client, method)(path)
+        assert resp.status_code == 404
+        assert "disable-build" in resp.json()["detail"]
+
+    def test_generate_still_works_when_build_disabled(
+        self,
+        client: TestClient,
+        stereo_gain_json: dict[str, Any],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Source generation is not affected by --disable-build."""
+        monkeypatch.setenv(DISABLE_BUILD_ENV, "1")
+        resp = client.post("/api/generate", json={"graph": stereo_gain_json, "platform": "clap"})
+        assert resp.status_code == 200
+
+    def test_config_reports_build_flag(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Enabled by default, disabled only when the flag is set.
+        monkeypatch.delenv(DISABLE_BUILD_ENV, raising=False)
+        assert client.get("/api/config").json()["build_enabled"] is True
+        monkeypatch.setenv(DISABLE_BUILD_ENV, "1")
+        assert client.get("/api/config").json()["build_enabled"] is False

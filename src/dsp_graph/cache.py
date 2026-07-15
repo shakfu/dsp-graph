@@ -7,6 +7,7 @@ import json
 import shutil
 import sys
 import tempfile
+import threading
 import time
 from importlib.metadata import version as pkg_version
 from pathlib import Path
@@ -53,6 +54,10 @@ class BuildCache:
         self._root = root or _default_cache_root()
         self._builds = self._root / _BUILDS_DIR
         self._max_age = max_age
+        # Guards mutating disk bookkeeping (put/_evict_expired/clear) so that
+        # concurrent threadpool workers cannot rmtree a shard another is reading.
+        # The expensive build runs outside this lock, so throughput is unaffected.
+        self._lock = threading.Lock()
 
     @property
     def cache_dir(self) -> Path:
@@ -107,7 +112,9 @@ class BuildCache:
         if artifact_path.exists():
             return artifact_path
 
-        # Write to temp dir on same filesystem, then rename into place
+        # Write to a private temp dir on the same filesystem (unique per call, so
+        # this can run concurrently without contention), then take the lock only
+        # for the atomic rename into the shared shard tree.
         self._builds.mkdir(parents=True, exist_ok=True)
         tmp = Path(tempfile.mkdtemp(dir=self._builds, prefix=".tmp_"))
         try:
@@ -123,13 +130,16 @@ class BuildCache:
             }
             (tmp / _META_FILENAME).write_text(json.dumps(meta))
 
-            # Atomic move: ensure parent shard dir exists
-            shard.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                tmp.rename(shard)
-            except OSError:
-                # Target appeared between check and rename (race); fine, use existing
-                shutil.rmtree(tmp, ignore_errors=True)
+            # Create the parent shard dir and rename atomically under the lock, so
+            # a concurrent _evict_expired (which rmdir's empty prefix dirs) cannot
+            # remove the parent between the mkdir and the rename.
+            with self._lock:
+                shard.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    tmp.rename(shard)
+                except OSError:
+                    # Target appeared between check and rename (race); fine, use existing
+                    shutil.rmtree(tmp, ignore_errors=True)
         except Exception:
             shutil.rmtree(tmp, ignore_errors=True)
             raise
@@ -141,18 +151,19 @@ class BuildCache:
         count = 0
         if not self._builds.exists():
             return count
-        for shard_prefix in self._builds.iterdir():
-            if not shard_prefix.is_dir() or shard_prefix.name.startswith("."):
-                continue
-            for entry in shard_prefix.iterdir():
-                if entry.is_dir():
-                    shutil.rmtree(entry, ignore_errors=True)
-                    count += 1
-            # Remove empty shard prefix dir
-            try:
-                shard_prefix.rmdir()
-            except OSError:
-                pass
+        with self._lock:
+            for shard_prefix in self._builds.iterdir():
+                if not shard_prefix.is_dir() or shard_prefix.name.startswith("."):
+                    continue
+                for entry in shard_prefix.iterdir():
+                    if entry.is_dir():
+                        shutil.rmtree(entry, ignore_errors=True)
+                        count += 1
+                # Remove empty shard prefix dir
+                try:
+                    shard_prefix.rmdir()
+                except OSError:
+                    pass
         return count
 
     def size(self) -> tuple[int, int]:
@@ -178,28 +189,31 @@ class BuildCache:
         if not self._builds.exists():
             return
         now = time.time()
-        for shard_prefix in self._builds.iterdir():
-            if not shard_prefix.is_dir() or shard_prefix.name.startswith("."):
-                continue
-            for entry in shard_prefix.iterdir():
-                if not entry.is_dir():
+        with self._lock:
+            for shard_prefix in self._builds.iterdir():
+                if not shard_prefix.is_dir() or shard_prefix.name.startswith("."):
                     continue
-                meta_path = entry / _META_FILENAME
-                try:
-                    meta = json.loads(meta_path.read_text())
-                    if now - meta.get("created", 0) > self._max_age:
+                for entry in shard_prefix.iterdir():
+                    if not entry.is_dir():
+                        continue
+                    meta_path = entry / _META_FILENAME
+                    try:
+                        meta = json.loads(meta_path.read_text())
+                        if now - meta.get("created", 0) > self._max_age:
+                            shutil.rmtree(entry, ignore_errors=True)
+                    except (json.JSONDecodeError, OSError):
+                        # Corrupt entry -- remove it
                         shutil.rmtree(entry, ignore_errors=True)
-                except (json.JSONDecodeError, OSError):
-                    # Corrupt entry -- remove it
-                    shutil.rmtree(entry, ignore_errors=True)
-            # Clean up empty prefix dirs
-            try:
-                shard_prefix.rmdir()
-            except OSError:
-                pass
+                # Clean up empty prefix dirs
+                try:
+                    shard_prefix.rmdir()
+                except OSError:
+                    pass
 
 
-# Module-level singleton
+# Module-level singleton. Per-process: under a multi-worker deployment each worker
+# holds its own instance pointing at the same on-disk cache (which is content-
+# addressed and safe to share across processes). See README "Security model".
 _cache_instance: BuildCache | None = None
 
 

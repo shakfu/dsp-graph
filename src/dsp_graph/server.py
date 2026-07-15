@@ -20,7 +20,7 @@ from dsp_graph.api import layout as layout_api
 from dsp_graph.api import maxpat as maxpat_api
 from dsp_graph.api import optimize as optimize_api
 from dsp_graph.api import simulate as simulate_api
-from dsp_graph.config import is_experimental
+from dsp_graph.config import is_build_enabled, is_experimental
 from dsp_graph.security import (
     SESSION_TOKEN,
     BodySizeLimitMiddleware,
@@ -55,8 +55,8 @@ async def _session() -> dict[str, str]:
 
 @app.get("/api/config")
 async def _config() -> dict[str, bool]:
-    """Return runtime feature flags so the frontend can gate experimental UI."""
-    return {"experimental": is_experimental()}
+    """Return runtime feature flags so the frontend can gate optional UI."""
+    return {"experimental": is_experimental(), "build_enabled": is_build_enabled()}
 
 
 # Mount API routers

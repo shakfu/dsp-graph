@@ -30,6 +30,13 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Enable experimental features (e.g. the gen~/GenExpr transpiler tab)",
     )
+    serve_parser.add_argument(
+        "--disable-build",
+        action="store_true",
+        help="Disable the native build endpoints (/api/build*), which compile "
+        "graphs to plugin binaries on the host. Enabled by default; use this for "
+        "a hardened, inspect-only deployment.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -42,12 +49,14 @@ def main(argv: list[str] | None = None) -> None:
 
         import uvicorn
 
-        from dsp_graph.config import EXPERIMENTAL_ENV
+        from dsp_graph.config import DISABLE_BUILD_ENV, EXPERIMENTAL_ENV
 
-        # Plumb the flag through the environment so it reaches the app process
+        # Plumb the flags through the environment so they reach the app process
         # (and uvicorn --reload child processes, which inherit the environment).
         if args.experimental:
             os.environ[EXPERIMENTAL_ENV] = "1"
+        if args.disable_build:
+            os.environ[DISABLE_BUILD_ENV] = "1"
 
         if args.open:
             url = f"http://{args.host}:{args.port}"

@@ -135,8 +135,9 @@ export function SimulationPanel() {
         </div>
       )}
       <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <label style={{ fontSize: 12 }}>Samples:</label>
+        <label htmlFor="sim-samples" style={{ fontSize: 12 }}>Samples:</label>
         <input
+          id="sim-samples"
           type="number"
           value={nSamples}
           onChange={(e) => setNSamples(Number(e.target.value))}
@@ -149,8 +150,9 @@ export function SimulationPanel() {
         </button>
       </div>
       <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
-        <label style={{ fontSize: 12 }}>Rate:</label>
+        <label htmlFor="sim-rate" style={{ fontSize: 12 }}>Rate:</label>
         <input
+          id="sim-rate"
           type="number"
           value={sampleRate}
           onChange={(e) => setSampleRate(Number(e.target.value))}

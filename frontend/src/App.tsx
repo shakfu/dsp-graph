@@ -38,9 +38,27 @@ function DividerHandle({
     [onDrag]
   );
 
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const step = e.shiftKey ? 48 : 16;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        onDrag(-step);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        onDrag(step);
+      }
+    },
+    [onDrag]
+  );
+
   return (
     <div
+      role="button"
+      aria-label="Resize panels (use left/right arrow keys)"
+      tabIndex={0}
       onMouseDown={onMouseDown}
+      onKeyDown={onKeyDown}
       style={{
         width: 5,
         cursor: "col-resize",

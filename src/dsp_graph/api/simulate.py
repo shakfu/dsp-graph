@@ -7,6 +7,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 router = APIRouter()
@@ -18,7 +19,12 @@ _MAX_N_SAMPLES = 262_144  # ~6 s at 44.1 kHz; ample for a debugger
 _MAX_SAMPLE_RATE = 768_000
 _MAX_BUFFER_LEN = 1_048_576
 
-# Server-side session storage: session_id -> (SimState, Graph, last_access_time)
+# Server-side session storage: session_id -> (SimState, Graph, last_access_time).
+# In-process and per-worker: this assumes the single-worker deployment model (see
+# README "Security model"). Under multiple workers a request could hit a worker
+# that does not hold its session; moving this to a shared store is required first.
+# Accessed only on the event loop (never inside run_in_threadpool), so it needs no
+# lock -- the loop serializes all reads/writes.
 _sessions: dict[str, tuple[Any, Any, float]] = {}
 _MAX_SESSIONS = 10
 _SESSION_TTL = 300.0  # 5 minutes
@@ -161,7 +167,10 @@ async def simulate(req: SimulateRequest) -> SimulateResponse:
         if req.session_id and req.session_id in _sessions:
             state, _, _ = _sessions[req.session_id]
 
-        result = run_sim(
+        # Offload the numpy simulation to a worker thread so it does not block
+        # the event loop; session bookkeeping stays on the loop (serialized).
+        result = await run_in_threadpool(
+            run_sim,
             g,
             n_samples=req.n_samples,
             inputs=sim_inputs,
@@ -193,7 +202,8 @@ async def simulate_continue(req: ContinueRequest) -> SimulateResponse:
     try:
         sim_inputs = _build_inputs(graph, req.n_samples, graph.sample_rate, req.inputs)
 
-        result = run_sim(
+        result = await run_in_threadpool(
+            run_sim,
             graph,
             n_samples=req.n_samples,
             inputs=sim_inputs,

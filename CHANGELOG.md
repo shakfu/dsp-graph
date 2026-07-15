@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.1]
+
+### Added
+
+- **Optimization step-through UI**: the Optimize panel can now apply individual passes one at a time (constant fold, CSE, dead-node elimination, control-rate promotion) via `POST /api/optimize/pass`, composing on the current graph and showing a per-pass node-count diff (`3 -> 2 nodes (1 removed)`). "Reset" restores the pre-optimize graph. Backed by a new `runSinglePass` store action; "Run All" is unchanged.
+
+- **`--disable-build` flag**: the native build endpoints (`/api/build*`) are enabled by default but can be turned off with `dsp-graph serve --disable-build` for a hardened, inspect-only deployment. When disabled, every `/api/build*` route returns 404 (via a router dependency) and the frontend hides the Plugin Target panel. Source generation (`/api/generate*`) is unaffected. `GET /api/config` now reports `build_enabled` alongside `experimental`; the flag is plumbed through `DSP_GRAPH_DISABLE_BUILD` and read at call time via `dsp_graph.config.is_build_enabled()`.
+
+- **Frontend linting**: ESLint 9 flat config (`frontend/eslint.config.js`) with typescript-eslint, react-hooks, jsx-a11y, and react-refresh, all enforced as errors. New `make frontend-lint`, `make frontend-typecheck`, `make frontend-test`, and aggregate `make frontend-qa` targets (kept separate from the Python `make qa`).
+
+- **Tests**: `tests/test_threading.py` (event loop not blocked during a build, bounded build concurrency, concurrent-session isolation, thread-safe cache), FFT/spectrum unit tests (`frontend/src/utils/fft.test.ts`), an optimize step-through store test, and build-gating tests.
+
+### Changed
+
+- **Structured DSL compile errors**: semantic errors (`GDSPCompileError`, e.g. an undefined function) from `POST /api/graph/load/gdsp` now return `{message, line, col}` like syntax errors did, instead of a bare string swallowed by a generic handler -- so the editor can place an inline marker at the offending location.
+
+- **Accessibility**: intentionally-custom clickable/hover elements (node picker rows, context-menu items, dismissable error text, validation rows) gained keyboard and focus support via new `buttonProps`/`hoverHighlight` helpers (`frontend/src/utils/a11y.ts`); the resizable-panel divider is now keyboard-operable (arrow keys). jsx-a11y is clean with no rule suppressions beyond two documented canvas cases.
+
+- **Docs**: refreshed `CLAUDE.md` (complete module layout and API surface, deployment model) and `README.md` (single-worker deployment note, complete API table, `build_enabled` config flag).
+
+### Fixed
+
+- **Blocking work no longer stalls the event loop**: native builds, numpy simulation, and cache disk IO ran inline in `async def` handlers, so a single build froze the whole server (including the editor's live-preview parse/validate). They are now offloaded to a worker-thread pool via `run_in_threadpool`; concurrent native builds are bounded by a semaphore; and the on-disk build cache is thread-safe. Shared in-process state (sessions, batch cache) is only touched on the event loop, so it needs no locking -- the single-worker deployment assumption this relies on is now documented.
+
+- **Build-cache write/evict race**: creating a shard's parent directory and the atomic rename now happen together under the cache lock, so a concurrent eviction (which prunes empty prefix directories) can no longer delete the parent between the two, which previously dropped the just-built artifact.
+
+- **Spectrum display**: applies a Hann window before the FFT (the previous rectangular window smeared non-periodic frames), normalizes by the window's coherent gain so displayed levels are unchanged, and includes the Nyquist bin so the frequency axis label is correct for zero-padded / short frames.
+
+- Removed an unnecessary escape in the `.gdsp` editor's operator-tokenizer regex.
+
+### Security
+
+- **Build endpoints can be disabled**: `--disable-build` provides defense-in-depth for the highest-privilege API (native compilation invokes a host toolchain), on top of the existing localhost bind and per-session token.
+
+- **Dev-dependency advisories resolved**: patched build-toolchain vulnerabilities (Vite, Babel, PostCSS, picomatch) within existing semver ranges via `npm audit fix`; `npm audit` reports zero vulnerabilities. These are dev/build-time only and never shipped in the built output.
+
 ## [0.2.0]
 
 ### Added
