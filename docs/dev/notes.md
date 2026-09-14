@@ -1,81 +1,3 @@
-# TODO
-
-## Critical
-
-## High
-
-## Medium
-
-### Import / export
-
-- [ ] PNG export (raster alternative to SVG)
-
-- [ ] DOT/PDF export button (uses `graph_to_dot_file()` for Graphviz rendering)
-
-### Individual optimization passes
-
-- [ ] Side-by-side diff view for C++ output before/after optimization
-
-### Multi-graph GDSP parsing and composition
-
-- [ ] Subgraph library browsing from a multi-graph file
-
-- [ ] Autocomplete for graph names defined in the same file (for `>>`, `//`, call syntax)
-
-### Testing
-
-- [ ] Frontend component tests (React Testing Library or Playwright)
-
-- [ ] End-to-end tests: load graph, simulate, export, verify results
-
-- [ ] Visual regression tests for SVG export
-
-### Tooling & maintainability
-
-- [ ] Decompose the ~800-line `useGraph` zustand store into composed slices (graph / sim / build / editor) and split the large `GraphCanvas.tsx` (extract `ContextMenu`, `NodePicker`, a keyboard hook).
-
-- [ ] Expand frontend tests beyond the store: Graph<->ReactFlow convert contract, the hand-rolled FFT, and the ELK layout mapping.
-
-## Low
-
-### Subgraph support
-
-- [ ] "Expand subgraph" context menu action on Subgraph nodes
-
-- [ ] Side-by-side nested vs flat graph view
-
-- [ ] Node grouping / subgraph collapse for large graphs
-
-### Control-rate node visualization
-
-- [ ] Annotate nodes with audio-rate vs control-rate badge/style
-
-- [ ] "Promote to control rate" action with visual feedback
-
-### Forward dependency highlighting
-
-- [ ] Highlight all downstream dependents when a node is selected
-
-- [ ] "Select all connected" for subgraph extraction
-
-### UX polish
-
-- [ ] Keyboard shortcuts (delete node, fit view, export, undo)
-
-- [ ] Search/filter nodes by name or op type on the canvas
-
-- [ ] Dark mode theme for the full app (not just editor)
-
-- [ ] Touch/trackpad gesture improvements
-
-### Docs
-
-- [ ] README: add screenshots/GIF (the API table is now complete).
-
-- [ ] Add `CONTRIBUTING.md`.
-
-- [ ] CHANGELOG: add release dates and compare links per keepachangelog.
-
 ## Design decision: editor-primary
 
 The .gdsp text editor is the primary authoring surface. The canvas is a read-only visualization (topology, layout, validation overlays, simulation results) with click-to-select and go-to-definition bridging back to the editor. Bidirectional canvas editing was evaluated and descoped -- the cost of source transforms (especially expression rewriting for connect/disconnect) outweighs the benefit given that .gdsp is a concise textual DSL.
@@ -145,3 +67,4 @@ The gdsp load endpoint now uses `parse_multi(source)` (returns `dict[str, Graph]
 ## Code review follow-ups
 
 Remaining items from the architecture/code review (the security, input-bounds, edge-editing, Safari-loop, CI, sample-rate, and dead-code items are already done).
+

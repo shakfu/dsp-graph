@@ -9,16 +9,27 @@ dsp-graph provides a web UI (React + React Flow) backed by a Python server (Fast
 **Features:**
 
 - Load graphs from JSON or `.gdsp` DSL source (toolbar or drag-and-drop), with localStorage auto-save/restore
+
 - `.gdsp` editor with syntax highlighting, autocomplete, snippets, go-to-definition, inline error markers, and debounced live preview
+
 - Interactive React Flow canvas (pan, zoom, minimap) with ELK auto-layout and auto fit-to-view
+
 - Canvas editing: add/delete/duplicate nodes and draw/replace/delete edges via per-input handles, with undo/redo
+
 - Validation overlays: per-node error/warning borders and feedback-cycle highlighting
+
 - Node inspector showing all properties
+
 - Stateful, streaming simulation: live parameter sliders, "step N more samples", peek-value overlays, oscilloscope waveform and FFT spectrum views, with a configurable sample rate
+
 - Multi-pass and per-pass graph optimization with before/after comparison
+
 - C++ code generation preview with copy/download
+
 - Binary plugin build for multiple platforms (CLAP, VST3, AU, LV2, etc.), with batch build + zip download
+
 - Content-addressed build cache (avoids recompilation for unchanged graphs)
+
 - Graphviz DOT and SVG export; round-trip export back to graph JSON and `.gdsp`
 
 ## Installation
@@ -46,15 +57,20 @@ Starts the server at `http://127.0.0.1:8765`. Open that URL in a browser, then l
 
 ### CLI Options
 
-```
+```text
 dsp-graph serve [--host HOST] [--port PORT] [--reload] [--open] [--experimental] [--disable-build]
 ```
 
 - `--host`: Bind address (default: 127.0.0.1)
+
 - `--port`: Port (default: 8765)
+
 - `--reload`: Auto-reload on code changes
+
 - `--open`: Open browser on start
+
 - `--experimental`: Enable experimental features (the gen~/GenExpr transpiler tab and its Max `.maxpat` test-patch export). Off by default; when omitted the GenExpr tab is hidden and `POST /api/genexpr` and `POST /api/graph/export/maxpat` return 404.
+
 - `--disable-build`: Disable the native build endpoints (`/api/build*`), which compile graphs to plugin binaries on the host. Enabled by default; when set the Plugin Target build panel is hidden and every `/api/build*` route returns 404. Source generation (`/api/generate*`) is unaffected either way. Use this for a hardened, inspect-only deployment.
 
 ### Security model
@@ -101,26 +117,43 @@ CI (`.github/workflows/ci.yml`) runs the backend lint/format/type-check/tests (P
 ### Backend (Python)
 
 - `convert.py` -- Core Graph <-> ReactFlow conversion layer
+
 - `server.py` -- FastAPI app with SPA static serving
+
 - `security.py` -- Session-token (anti-CSRF) and body-size middleware
+
 - `cli.py` -- CLI entry point (`dsp-graph serve`)
+
 - `cache.py` -- Content-addressed disk cache for build artifacts
+
 - `api/graph.py` -- Graph load/validate/export/catalog endpoints
+
 - `api/simulate.py` -- Per-sample simulation endpoint
+
 - `api/optimize.py` -- Multi-pass optimization endpoint
+
 - `api/compile.py` -- C++ code generation endpoint
+
 - `api/genexpr.py` -- gen~ codebox (GenExpr) transpile endpoint
+
 - `api/maxpat.py` -- Max `.maxpat` test-patch export endpoint (wraps `maxpat.py`)
+
 - `api/generate.py` -- Project generation (source files, zip download, platform listing)
+
 - `api/build.py` -- Binary build, batch build, and build cache management
+
 - `api/layout.py` -- Auto-layout endpoint
 
 ### Frontend (React + TypeScript)
 
 - React Flow (xyflow) for graph visualization
+
 - Zustand for state management
+
 - CodeMirror editor with custom `.gdsp` language support
+
 - Custom node types: input, output, param, dsp_node
+
 - Vite build, outputs to `src/dsp_graph/static/`
 
 ### API Endpoints
